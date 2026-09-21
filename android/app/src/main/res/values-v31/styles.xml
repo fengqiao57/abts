@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+（API 31+）系统启动画面主题：
+     系统不再绘制 LaunchTheme 的 windowBackground，而是基于本主题的
+     splashscreen 参数生成启动画面，因此单独配置，保证品牌深空蓝 + LOGO 一致。 -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">#040F30</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/splash_logo</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+</resources>

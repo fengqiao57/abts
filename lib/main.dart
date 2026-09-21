@@ -13,6 +13,7 @@ import 'core/storage/shelf_store.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'pages/home_shell.dart';
+import 'pages/splash_screen.dart';
 import 'player/bili_audio_handler.dart';
 import 'player/book_player.dart';
 import 'services/auth_store.dart';
@@ -23,7 +24,13 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
 
-  // 友盟统计初始化（runApp 前完成，保证首启日活采集）
+  // 立即渲染启动页（LOGO + 加载动画），耗时初始化移到启动页后台执行，避免白屏
+  runApp(const AbTingShuApp());
+}
+
+/// 启动前的全部耗时初始化（在 AbTingShuApp 中启动页展示期间执行，完成后切首页）
+Future<void> _bootstrap() async {
+  // 友盟统计初始化（保证首启日活采集）
   await AppAnalytics.init();
 
   // 通知权限（Android 13+ 锁屏媒体控制需要）
@@ -63,8 +70,6 @@ Future<void> main() async {
     ),
   );
   player.attachHandler(handler);
-
-  runApp(const AbTingShuApp());
 }
 
 class AbTingShuApp extends StatefulWidget {
@@ -76,10 +81,16 @@ class AbTingShuApp extends StatefulWidget {
 
 class _AbTingShuAppState extends State<AbTingShuApp>
     with WidgetsBindingObserver {
+  bool _ready = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _bootstrap().whenComplete(() {
+      if (!mounted) return;
+      setState(() => _ready = true);
+    });
   }
 
   @override
@@ -118,10 +129,12 @@ class _AbTingShuAppState extends State<AbTingShuApp>
             theme: AppTheme.light(),
             darkTheme: AppTheme.dark(),
             themeMode: tc.mode,
-            home: KeyedSubtree(
-              key: ValueKey('theme-${tc.mode.name}'),
-              child: const HomeShell(),
-            ),
+            home: _ready
+                ? KeyedSubtree(
+                    key: ValueKey('theme-${tc.mode.name}'),
+                    child: const HomeShell(),
+                  )
+                : const SplashScreen(),
           );
         },
       ),

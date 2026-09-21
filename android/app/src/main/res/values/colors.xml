@@ -2,4 +2,6 @@
 <resources>
     <!-- 自适应图标背景色（取自 logo 底色） -->
     <color name="ic_launcher_background">#010822</color>
+    <!-- 启动窗口背景（品牌深空蓝，与 Flutter 启动页衔接，避免白屏闪烁） -->
+    <color name="splash_background">#040F30</color>
 </resources>
