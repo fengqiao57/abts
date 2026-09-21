@@ -5,206 +5,237 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>阿B听书 — 免登录、无广告、专注收听的 B 站有声小说播放器</title>
 <meta name="description" content="阿B听书是一个免登录、无广告、专注收听的第三方 B 站有声小说播放器。有声小说、评书、相声、广播剧，点开即听；支持后台播放、断点续播、睡眠定时。">
-<meta name="theme-color" content="#f5f5f7">
+<meta name="theme-color" content="#040F30">
 <link rel="icon" href="logo.png">
 <meta property="og:type" content="website">
 <meta property="og:title" content="阿B听书 — 免登录、无广告、专注收听的 B 站有声小说播放器">
 <meta property="og:description" content="把 B 站当作有声书库：有声小说、评书、相声、广播剧，点开即听。">
 <style>
 :root{
-  --bg:#f5f5f7;
-  --surface:#ffffff;
-  --hover:#fbfbfd;
-  --text:#1d1d1f;
-  --text-body:#424245;
-  --text-2:#6e6e73;
-  --text-3:#86868b;
-  --text-4:#aeaeb2;
-  --faint:#d2d2d7;
-  --hairline:rgba(0,0,0,0.07);
-  --accent:#0071e3;
-  --accent-link:#0066cc;
-  --indigo:#5e5ce6;
-  --grad-cta:linear-gradient(135deg,#0071e3 0%,#5e5ce6 100%);
-  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text','SF Pro Display','Helvetica Neue','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
-  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
-  --r-pill:999px;
-  --r-chip:6px;
-  --r-card:18px;
-  --r-panel:22px;
-  --r-hero:26px;
-  --sh-card:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.05);
-  --sh-panel:0 1px 3px rgba(0,0,0,.05),0 14px 40px rgba(0,0,0,.05);
-  --sh-lift:0 12px 32px rgba(0,0,0,.1);
-  --sh-cta:0 20px 54px rgba(0,113,227,.24);
-  --max-read:720px;
-  --max-grid:1080px;
-  --pad-x:22px;
-  --ease-out-quart:cubic-bezier(0.25,1,0.5,1);
+  --navy:#040F30;
+  --surface:rgba(168,217,252,.055);
+  --surface-2:rgba(168,217,252,.09);
+  --line:rgba(168,217,252,.15);
+  --line-soft:rgba(168,217,252,.09);
+  --ice:#A8D9FC;
+  --moon:#EDF2FC;
+  --hint:#8FA7FC;
+  --blue:#1478FC;
+  --deep:#1236FC;
+  --sky:#5FC0FC;
+  --violet:#7649FC;
+  --serif:"Songti SC","STSong","Noto Serif SC","Source Han Serif SC","SimSun",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+  --max:1080px;
+  --radius:20px;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;font-optical-sizing:auto}
+html{scroll-behavior:smooth}
 body{
-  margin:0;background:var(--bg);color:var(--text);
-  font-family:var(--font);font-size:16px;line-height:1.6;
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  margin:0;background:var(--navy);color:var(--moon);
+  font-family:var(--sans);font-size:16px;line-height:1.75;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
 }
-a{color:var(--accent-link);text-decoration:none}
-img{max-width:100%;display:block}
-::selection{background:rgba(0,113,227,.18)}
-:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
-.wrap{max-width:var(--max-grid);margin:0 auto;padding:0 var(--pad-x)}
-.read{max-width:var(--max-read);margin:0 auto;padding:0 var(--pad-x)}
+a{color:var(--ice);text-decoration:none}
+a:hover{color:#fff}
+img{max-width:100%}
+::selection{background:rgba(20,120,252,.45);color:#fff}
+:focus-visible{outline:2px solid var(--sky);outline-offset:3px;border-radius:6px}
+
+.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.bg::before,.bg::after{content:"";position:absolute;border-radius:50%;filter:blur(90px);opacity:.5}
+.bg::before{width:760px;height:760px;top:-320px;left:50%;transform:translateX(-50%);background:radial-gradient(circle,rgba(18,54,252,.42),transparent 62%)}
+.bg::after{width:640px;height:640px;bottom:-260px;right:-180px;background:radial-gradient(circle,rgba(118,73,252,.26),transparent 64%)}
+.bg .glow{position:absolute;width:520px;height:520px;bottom:22%;left:-260px;border-radius:50%;filter:blur(100px);background:radial-gradient(circle,rgba(95,192,252,.16),transparent 65%)}
+
+.wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
 
 .nav{
   position:sticky;top:0;z-index:50;
-  background:rgba(245,245,247,.72);
-  backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);
-  border-bottom:1px solid transparent;
-  transition:border-color .3s,box-shadow .3s;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  background:rgba(4,15,48,.72);
+  border-bottom:1px solid var(--line-soft);
 }
-.nav.scrolled{border-bottom-color:var(--hairline);box-shadow:0 1px 12px rgba(0,0,0,.04)}
-.nav-in{
-  max-width:var(--max-grid);margin:0 auto;padding:0 var(--pad-x);height:54px;
-  display:flex;align-items:center;justify-content:space-between;gap:16px;
+.nav-in{max-width:var(--max);margin:0 auto;padding:12px 22px;display:flex;align-items:center;gap:20px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--moon);font-family:var(--serif);font-size:19px;font-weight:700;letter-spacing:.06em}
+.brand img{width:30px;height:30px;border-radius:8px;display:block}
+.nav-links{display:flex;align-items:center;gap:18px;margin-left:auto;font-size:14.5px}
+.nav-links a{color:var(--hint)}
+.nav-links a:hover{color:var(--moon)}
+.nav .gh{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:7px 14px;border:1px solid var(--line);border-radius:999px;
+  font-size:14px;color:var(--moon);background:var(--surface);
 }
-.brand{display:flex;align-items:center;gap:9px;color:var(--text);font-size:15px;font-weight:650;letter-spacing:-0.01em}
-.brand img{width:24px;height:24px;border-radius:6px}
-.nav-r{display:flex;align-items:center;gap:8px}
-.nav-link{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:var(--r-pill);color:var(--text-2);font-size:13.5px;font-weight:500}
-.nav-link:hover{color:var(--text);background:rgba(0,0,0,.04)}
-.nav-pill{
-  display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 14px;
-  border-radius:var(--r-pill);background:rgba(0,0,0,.05);color:var(--text);
-  font-size:13px;font-weight:550;
-}
-.nav-pill:hover{background:rgba(0,0,0,.08);color:var(--text)}
-.nav-pill svg{width:15px;height:15px;fill:currentColor}
+.nav .gh:hover{border-color:rgba(168,217,252,.4);background:var(--surface-2)}
+.nav .gh svg{width:16px;height:16px;fill:currentColor}
 
-.hero{text-align:center;padding:clamp(56px,9vw,104px) var(--pad-x) 0}
+.hero{padding:84px 0 0;text-align:center;position:relative}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:13px;color:var(--ice);letter-spacing:.14em;
+  border:1px solid var(--line);border-radius:999px;padding:6px 16px;
+  background:var(--surface);
+}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--sky);box-shadow:0 0 10px var(--sky)}
 h1{
-  margin:0;font-size:clamp(38px,8vw,68px);font-weight:700;
-  letter-spacing:-0.03em;line-height:1.06;
+  font-family:var(--serif);
+  font-size:clamp(52px,11vw,104px);
+  line-height:1.08;margin:26px 0 0;font-weight:700;letter-spacing:.04em;
 }
-.lede{
-  margin:18px auto 0;max-width:560px;
-  font-size:clamp(16px,2.6vw,19px);color:var(--text-2);line-height:1.6;
+h1 .b{color:var(--moon)}
+h1 .t{
+  background:linear-gradient(120deg,var(--sky) 0%,var(--blue) 45%,var(--violet) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
 }
-.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+.slogan{margin:22px auto 0;max-width:660px;font-size:clamp(16px,2.6vw,19px);color:var(--ice);line-height:1.9}
+.cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:36px}
 .btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  min-height:44px;padding:0 24px;border-radius:var(--r-pill);
-  font-size:15px;font-weight:600;
-  transition:transform .2s var(--ease-out-quart),box-shadow .2s var(--ease-out-quart),background .2s;
+  display:inline-flex;align-items:center;gap:9px;
+  padding:13px 28px;border-radius:999px;font-size:15.5px;font-weight:600;
+  transition:transform .18s ease,box-shadow .18s ease,background .18s ease,border-color .18s ease;
 }
-.btn:active{transform:scale(.98)}
-.btn-primary{background:var(--accent);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.06)}
-.btn-primary:hover{background:#0077ed;box-shadow:0 8px 24px rgba(0,113,227,.3);transform:translateY(-1px)}
-.btn-secondary{
-  background:rgba(255,255,255,.8);border:1px solid rgba(0,0,0,.08);
-  box-shadow:0 1px 2px rgba(0,0,0,.05);color:var(--text);font-weight:550;font-size:14px;
+.btn:active{transform:translateY(1px) scale(.99)}
+.btn-primary{
+  color:#fff;background:linear-gradient(120deg,var(--deep),var(--blue) 58%,var(--sky));
+  box-shadow:0 12px 34px rgba(20,120,252,.38);
 }
-.btn-secondary:hover{background:#fff;border-color:rgba(0,0,0,.14);transform:translateY(-1px)}
+.btn-primary:hover{color:#fff;box-shadow:0 16px 42px rgba(20,120,252,.5);transform:translateY(-2px)}
+.btn-ghost{color:var(--moon);border:1px solid var(--line);background:var(--surface)}
+.btn-ghost:hover{border-color:rgba(168,217,252,.42);background:var(--surface-2);transform:translateY(-2px)}
+.btn svg{width:17px;height:17px;fill:currentColor}
 
-.device{
-  width:min(310px,76vw);margin:clamp(40px,7vw,72px) auto 0;padding:10px;
-  background:#0b0b10;border-radius:52px;
-  box-shadow:0 50px 100px rgba(0,0,0,.24),0 10px 28px rgba(0,0,0,.16);
+.wave{display:flex;align-items:flex-end;justify-content:center;gap:5px;height:40px;margin:50px auto 0}
+.wave i{
+  width:5px;height:100%;border-radius:3px;
+  background:linear-gradient(180deg,var(--sky),var(--blue));
+  transform-origin:bottom;transform:scaleY(.22);
+  animation:pulse 1.35s ease-in-out infinite;
+  animation-delay:var(--d);opacity:.85;
 }
-.device img{width:100%;border-radius:42px}
+@keyframes pulse{0%,100%{transform:scaleY(.22)}50%{transform:scaleY(1)}}
 
-.sec{padding:clamp(56px,9vw,88px) var(--pad-x) 0}
-.group-label{
-  max-width:var(--max-grid);margin:0 auto 12px;
-  font-size:13px;font-weight:600;color:var(--text-3);letter-spacing:.01em;
+.shots{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin:48px 0 0}
+.shots figure{margin:0}
+.shots img{
+  display:block;width:100%;border-radius:16px;
+  border:1px solid var(--line);background:var(--surface);
+  transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease;
 }
-.panel{
-  max-width:var(--max-grid);margin:0 auto;
-  background:var(--surface);border-radius:var(--r-panel);
-  box-shadow:var(--sh-panel);overflow:hidden;
-}
-.row{padding:18px clamp(18px,3vw,26px);transition:background .15s}
-.row + .row{border-top:1px solid var(--hairline)}
-.row:hover{background:var(--hover)}
-.row h3{margin:0;font-size:16.5px;font-weight:600;letter-spacing:-0.01em;line-height:1.4}
-.row p{margin:5px 0 0;font-size:13.5px;color:var(--text-2);line-height:1.55}
+.shots figure:hover img{transform:translateY(-5px);border-color:rgba(168,217,252,.36);box-shadow:0 18px 40px rgba(2,8,28,.55)}
+.shots figcaption{margin-top:11px;font-size:12.5px;color:var(--hint);text-align:center}
 
-.cta-block{
-  position:relative;overflow:hidden;max-width:var(--max-grid);margin:0 auto;
-  border-radius:var(--r-hero);padding:clamp(28px,4.5vw,44px);
-  background:var(--grad-cta);box-shadow:var(--sh-cta);
+section{padding:92px 0 0}
+.sec-head{display:flex;align-items:baseline;gap:16px}
+.sec-num{
+  font-family:var(--serif);font-size:15px;color:var(--sky);
+  border:1px solid var(--line);border-radius:10px;
+  padding:3px 11px;letter-spacing:.2em;
+  background:var(--surface);flex:0 0 auto;transform:translateY(-2px);
 }
-.orb{position:absolute;border-radius:50%;pointer-events:none}
-.orb-a{width:280px;height:280px;background:rgba(255,255,255,.16);filter:blur(46px);top:-100px;right:-60px}
-.orb-b{width:220px;height:220px;background:rgba(120,80,255,.5);filter:blur(50px);bottom:-100px;left:10%}
-.cta-in{position:relative}
-.cta-in h2{margin:0;font-size:clamp(20px,3.2vw,26px);font-weight:700;color:#fff;letter-spacing:-0.02em}
-.cta-in p{margin:8px 0 0;font-size:14px;color:rgba(255,255,255,.82);line-height:1.6}
-.glass-chip{
-  display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  min-height:44px;padding:0 22px;margin-top:22px;border-radius:var(--r-pill);
-  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  color:#fff;font-size:14px;font-weight:600;
-  transition:background .2s,transform .2s var(--ease-out-quart);
-}
-.glass-chip:hover{background:rgba(255,255,255,.24);transform:translateY(-1px)}
-.glass-chip:active{transform:scale(.98)}
+.sec-title{font-family:var(--serif);font-size:clamp(26px,4.4vw,36px);margin:0;font-weight:700;letter-spacing:.03em}
+.sec-body{margin-top:40px}
 
-.dl-panel{margin-top:14px}
-.dl-row{display:flex;align-items:center;gap:16px;padding:16px clamp(18px,3vw,26px);transition:background .15s}
-.dl-row + .dl-row{border-top:1px solid var(--hairline)}
-.dl-row:hover{background:var(--hover)}
-.dl-name{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.dl-name code{
-  font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--text);
-  background:rgba(0,0,0,.05);padding:3px 9px;border-radius:var(--r-chip);
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{
+  border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--surface);padding:28px 26px;
+  transition:transform .2s ease,border-color .2s ease,background .2s ease;
 }
-.tag-rec{
-  font-size:11px;font-weight:600;color:var(--accent-link);
-  background:rgba(0,113,227,.08);padding:3px 9px;border-radius:var(--r-pill);
+.card:hover{transform:translateY(-4px);border-color:rgba(168,217,252,.34);background:var(--surface-2)}
+.card .ico{
+  width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(140deg,rgba(20,120,252,.28),rgba(118,73,252,.18));
+  border:1px solid var(--line);margin-bottom:18px;
 }
-.dl-row p{margin:5px 0 0;font-size:13px;color:var(--text-2)}
-.dl-size{margin-left:auto;font-size:13.5px;color:var(--text-2);font-variant-numeric:tabular-nums;white-space:nowrap}
-.note{
-  max-width:var(--max-grid);margin:14px auto 0;
-  font-size:12.5px;color:var(--text-3);line-height:1.8;
+.card .ico svg{width:21px;height:21px;fill:none;stroke:var(--sky);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.card h3{margin:0 0 8px;font-size:18.5px;letter-spacing:.02em}
+.card p{margin:0;color:var(--ice);font-size:14.5px;line-height:1.85}
+
+.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.feat{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:26px}
+.feat h4{
+  margin:0 0 16px;font-size:15px;color:var(--sky);
+  letter-spacing:.12em;font-weight:600;
+  padding-bottom:12px;border-bottom:1px solid var(--line-soft);
+}
+.feat ul{margin:0;padding:0;list-style:none}
+.feat li{position:relative;padding-left:20px;margin:11px 0;color:var(--moon);font-size:14.5px;line-height:1.8}
+.feat li::before{
+  content:"";position:absolute;left:2px;top:.72em;width:6px;height:6px;border-radius:50%;
+  background:linear-gradient(135deg,var(--sky),var(--blue));
 }
 
-.legal{max-width:var(--max-read);margin:0 auto}
-.legal p{margin:0;padding:16px 0;font-size:13.5px;color:var(--text-2);line-height:1.85}
-.legal p + p{border-top:1px solid var(--hairline)}
-
-footer{margin-top:clamp(64px,10vw,104px);border-top:1px solid var(--hairline)}
-.foot{
-  max-width:var(--max-grid);margin:0 auto;padding:26px var(--pad-x) 40px;
-  display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;
+.dl{border:1px solid var(--line);border-radius:26px;background:linear-gradient(180deg,var(--surface-2),var(--surface));padding:clamp(24px,4.5vw,44px)}
+.dl-top{display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:space-between}
+.dl-top h3{margin:0;font-family:var(--serif);font-size:clamp(21px,3.4vw,27px);letter-spacing:.02em}
+.dl-top p{margin:6px 0 0;color:var(--hint);font-size:14px}
+.dl-rows{margin-top:26px;border-top:1px solid var(--line-soft)}
+.dl-row{display:flex;align-items:center;gap:16px;padding:15px 2px;border-bottom:1px solid var(--line-soft)}
+.dl-row code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:13px;color:var(--moon);
+  background:rgba(168,217,252,.08);border:1px solid var(--line-soft);
+  padding:2px 9px;border-radius:7px;white-space:nowrap;
 }
-.foot-brand{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--text)}
-.foot-brand img{width:22px;height:22px;border-radius:6px}
-.foot-links{display:flex;gap:18px;font-size:13px}
-.foot-links a{color:var(--text-2)}
-.foot-links a:hover{color:var(--text)}
+.dl-row .rec{
+  display:inline-block;margin-left:8px;padding:1px 9px;border-radius:999px;
+  font-size:12px;color:#fff;background:linear-gradient(120deg,var(--deep),var(--blue));
+}
+.dl-row .dev{color:var(--hint);font-size:14px}
+.dl-row .size{margin-left:auto;color:var(--ice);font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.note{margin-top:18px;color:var(--hint);font-size:13.5px;line-height:1.9}
 
+.legal{max-width:780px;margin:0 auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:clamp(20px,3.5vw,32px)}
+.legal p{margin:0;padding:15px 0;color:var(--ice);font-size:14px;line-height:1.9}
+.legal p + p{border-top:1px solid var(--line-soft)}
+
+footer{
+  margin-top:100px;padding:50px 0 60px;
+  border-top:1px solid var(--line-soft);
+  background:linear-gradient(180deg,transparent,rgba(8,20,51,.8));
+}
+.foot-in{max-width:var(--max);margin:0 auto;padding:0 22px;display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+.foot-brand{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:17px;font-weight:700;letter-spacing:.05em}
+.foot-brand img{width:28px;height:28px;border-radius:8px}
+.foot-links{display:flex;gap:18px;font-size:14px}
+.foot-links a{color:var(--hint)}
+.foot-links a:hover{color:var(--moon)}
+
+@media (max-width:1000px){
+  .shots{grid-template-columns:repeat(3,1fr)}
+  .cards,.feats{grid-template-columns:1fr 1fr}
+}
 @media (max-width:680px){
-  .nav-link{display:none}
-  .dl-row{align-items:flex-start}
-  .dl-size{margin-left:auto;padding-top:2px}
+  .hero{padding-top:60px}
+  section{padding-top:72px}
+  .cards,.feats{grid-template-columns:1fr}
+  .shots{grid-template-columns:repeat(2,1fr);gap:10px}
+  .shots figcaption{font-size:11.5px}
+  .nav-links a:not(.gh){display:none}
+  .wave{height:32px;gap:4px}
+  .wave i{width:4px}
+  .dl-row{flex-wrap:wrap;gap:8px}
+  .dl-row .size{margin-left:0;width:100%}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
-  .btn,.glass-chip,.row,.dl-row{transition:none}
+  .wave i{animation:none;transform:scaleY(.6)}
+  .btn,.card,.shots img{transition:none}
 }
 </style>
 </head>
 <body>
+<div class="bg" aria-hidden="true"><div class="glow"></div></div>
 
-<header class="nav" id="nav">
+<header class="nav">
   <div class="nav-in">
-    <a class="brand" href="#top"><img src="logo.png" alt="">阿B听书</a>
-    <nav class="nav-r">
-      <a class="nav-link" href="#download">下载</a>
-      <a class="nav-pill" href="https://github.com/fengqiao57/abts" target="_blank" rel="noopener">
+    <a class="brand" href="#top"><img src="logo.png" alt="阿B听书 LOGO">阿B听书</a>
+    <nav class="nav-links">
+      <a href="#features">能听什么</a>
+      <a href="#download">下载</a>
+      <a href="#disclaimer">免责声明</a>
+      <a class="gh" href="https://github.com/fengqiao57/abts" target="_blank" rel="noopener">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub
       </a>
@@ -214,128 +245,150 @@ footer{margin-top:clamp(64px,10vw,104px);border-top:1px solid var(--hairline)}
 
 <main id="top">
   <section class="hero">
-    <h1>阿B听书</h1>
-    <p class="lede">免登录、无广告、专注收听的第三方 B 站有声小说播放器。</p>
-    <div class="cta">
-      <a class="btn btn-primary" href="#download">下载 APK</a>
-      <a class="btn btn-secondary" href="https://github.com/fengqiao57/abts" target="_blank" rel="noopener">查看源码</a>
-    </div>
-    <div class="device">
-      <img src="screenshots/5.jpg" alt="阿B听书播放页：封面、章节、进度与睡眠定时">
-    </div>
-  </section>
-
-  <section class="sec">
-    <p class="group-label">为什么是阿B听书</p>
-    <div class="panel">
-      <div class="row">
-        <h3>免登录</h3>
-        <p>不登录即可搜索、收听、收藏、记录进度；扫码登录仅用于同步头像昵称。</p>
+    <div class="wrap">
+      <span class="eyebrow"><span class="dot"></span>第三方 · 非官方 · 永久免费</span>
+      <h1><span class="b">阿B</span><span class="t">听书</span></h1>
+      <p class="slogan">免登录、无广告、专注收听的第三方 B 站有声小说播放器。<br>把 B 站当作有声书库，点开即听。</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#download">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a1 1 0 0 1 1 1v6.6l2.3-2.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L7 8.6V2a1 1 0 0 1 1-1zM2 13a1 1 0 0 1 1 1h10a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1v-1z"/></svg>
+          下载安装
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/fengqiao57/abts" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          查看源码
+        </a>
       </div>
-      <div class="row">
-        <h3>无广告</h3>
-        <p>没有广告、没有会员、没有弹窗，打开就能听。</p>
+      <div class="wave" aria-hidden="true">
+        <i style="--d:0s"></i><i style="--d:.12s"></i><i style="--d:.24s"></i><i style="--d:.06s"></i><i style="--d:.3s"></i><i style="--d:.18s"></i><i style="--d:.42s"></i><i style="--d:.09s"></i><i style="--d:.33s"></i><i style="--d:.21s"></i><i style="--d:.03s"></i><i style="--d:.27s"></i><i style="--d:.15s"></i><i style="--d:.39s"></i><i style="--d:.1s"></i><i style="--d:.31s"></i><i style="--d:.2s"></i><i style="--d:.05s"></i><i style="--d:.36s"></i><i style="--d:.14s"></i><i style="--d:.26s"></i>
       </div>
-      <div class="row">
-        <h3>专注收听</h3>
-        <p>断点续播精确到秒；睡眠定时、后台播放与锁屏控制。</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="sec">
-    <p class="group-label">能听什么，怎么听</p>
-    <div class="panel">
-      <div class="row">
-        <h3>听什么</h3>
-        <p>有声小说、评书、相声、广播剧；分类浏览与精选主播直达。</p>
-      </div>
-      <div class="row">
-        <h3>怎么听</h3>
-        <p>分P连播、±15 秒快进退；来电自动暂停，打断结束自动续播。</p>
-      </div>
-      <div class="row">
-        <h3>书架</h3>
-        <p>收藏、继续收听、最近收听，进度精确到秒；深色模式跟随系统。</p>
+      <div class="shots">
+        <figure><img src="screenshots/1.jpg" alt="书架页" loading="lazy"><figcaption>书架</figcaption></figure>
+        <figure><img src="screenshots/2.jpg" alt="发现页" loading="lazy"><figcaption>发现</figcaption></figure>
+        <figure><img src="screenshots/3.jpg" alt="我的页" loading="lazy"><figcaption>我的</figcaption></figure>
+        <figure><img src="screenshots/4.jpg" alt="书籍详情页" loading="lazy"><figcaption>书籍详情</figcaption></figure>
+        <figure><img src="screenshots/5.jpg" alt="播放页" loading="lazy"><figcaption>播放</figcaption></figure>
+        <figure><img src="screenshots/6.jpg" alt="睡眠定时页" loading="lazy"><figcaption>睡眠定时</figcaption></figure>
       </div>
     </div>
   </section>
 
-  <section class="sec" id="download">
-    <p class="group-label">下载</p>
-    <div class="cta-block">
-      <div class="orb orb-a"></div>
-      <div class="orb orb-b"></div>
-      <div class="cta-in">
-        <h2>阿B听书 v0.1.0</h2>
-        <p>Android 7.0+ · 已签名 · 包名 dev.pages.abts · 安装包彼此可覆盖升级</p>
-        <a class="glass-chip" href="https://github.com/fengqiao57/abts/releases/latest" target="_blank" rel="noopener">前往 Releases 下载</a>
+  <section id="principles">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">壹</span>
+        <h2 class="sec-title">为什么是阿B听书</h2>
+      </div>
+      <div class="sec-body cards">
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v8m0 0 3.5-3.5M12 11 8.5 7.5"/><rect x="4" y="3" width="16" height="18" rx="3"/></svg></div>
+          <h3>免登录</h3>
+          <p>不登录即可搜索、收听、收藏、记录进度；扫码登录仅用于同步昵称头像。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg></div>
+          <h3>无广告</h3>
+          <p>没有广告、没有会员、没有弹窗，打开就能听。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 13a8 8 0 0 1 16 0"/><rect x="3" y="13" width="4" height="7" rx="2"/><rect x="17" y="13" width="4" height="7" rx="2"/></svg></div>
+          <h3>专注收听</h3>
+          <p>断点续播精确到秒；睡眠定时、后台播放与锁屏控制。</p>
+        </div>
       </div>
     </div>
-    <div class="panel dl-panel">
-      <div class="dl-row">
-        <div>
-          <div class="dl-name"><code>arm64-v8a</code><span class="tag-rec">推荐</span></div>
-          <p>绝大多数手机（2017 年后的主流安卓机）</p>
-        </div>
-        <span class="dl-size">约 26 MB</span>
-      </div>
-      <div class="dl-row">
-        <div>
-          <div class="dl-name"><code>armeabi-v7a</code></div>
-          <p>较老的 32 位手机 / 低端设备</p>
-        </div>
-        <span class="dl-size">约 23 MB</span>
-      </div>
-      <div class="dl-row">
-        <div>
-          <div class="dl-name"><code>x86_64</code></div>
-          <p>x86_64 模拟器 / 平板 / 部分盒子</p>
-        </div>
-        <span class="dl-size">约 28 MB</span>
-      </div>
-      <div class="dl-row">
-        <div>
-          <div class="dl-name"><code>universal</code></div>
-          <p>不确定 CPU 架构时选它，兼容所有架构</p>
-        </div>
-        <span class="dl-size">约 73 MB</span>
-      </div>
-    </div>
-    <p class="note">怎么确认架构：设置 → 我的设备 → 处理器型号；或用 CPU-Z / AIDA64 查看 ABI 一栏。GitHub 在国内访问可能不稳定，如打不开可多试几次或更换网络。</p>
   </section>
 
-  <section class="sec" id="disclaimer">
-    <p class="group-label">免责声明</p>
-    <div class="legal">
-      <p>本应用为第三方个人开发的播放工具，与哔哩哔哩官方无任何关联，不代表、也不受哔哩哔哩官方授权或认可。</p>
-      <p>应用内所有音频、封面、文字等内容均来自第三方平台的公开链接，版权归原作者及相关权利人所有；本应用不存储、不修改、不二次分发任何内容。</p>
-      <p>内容仅供个人学习、研究与试听交流使用，请勿用于任何商业用途，请勿下载、录制或传播相关内容。</p>
-      <p>请在试听后支持正版：如喜欢某部作品，建议前往官方平台购买、订阅或支持作者。</p>
-      <p>若权利人认为本应用侵犯其合法权益，请通过 GitHub Issues 告知，我们将在核实后及时处理（包括但不限于移除相关入口）。</p>
-      <p>因使用本应用产生的任何直接或间接后果，由使用者自行承担。</p>
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">贰</span>
+        <h2 class="sec-title">能听什么，怎么听</h2>
+      </div>
+      <div class="sec-body feats">
+        <div class="feat">
+          <h4>听什么</h4>
+          <ul>
+            <li>有声小说、评书、相声、广播剧</li>
+            <li>分类浏览与精选主播直达</li>
+            <li>搜索限定「有声小说」，过滤无关内容</li>
+          </ul>
+        </div>
+        <div class="feat">
+          <h4>怎么听</h4>
+          <ul>
+            <li>分P连播、上/下一章、±15 秒快进退</li>
+            <li>断点续播精确到秒，下次打开接着听</li>
+            <li>睡眠定时、来电自动暂停、后台与锁屏控制</li>
+          </ul>
+        </div>
+        <div class="feat">
+          <h4>书架与其它</h4>
+          <ul>
+            <li>书架、继续收听、最近收听（显示精确进度）</li>
+            <li>浅色 / 深色 / 跟随系统</li>
+            <li>检查更新、分享原作品链接</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">叁</span>
+        <h2 class="sec-title">下载安装</h2>
+      </div>
+      <div class="sec-body dl">
+        <div class="dl-top">
+          <div>
+            <h3>阿B听书 v0.1.0</h3>
+            <p>Android 7.0+ · 已签名 · 包名 dev.pages.abts · 安装包彼此可覆盖升级</p>
+          </div>
+          <a class="btn btn-primary" href="https://github.com/fengqiao57/abts/releases/latest" target="_blank" rel="noopener">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a1 1 0 0 1 1 1v6.6l2.3-2.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L7 8.6V2a1 1 0 0 1 1-1zM2 13a1 1 0 0 1 1 1h10a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1v-1z"/></svg>
+            前往 Releases 下载
+          </a>
+        </div>
+        <div class="dl-rows">
+          <div class="dl-row"><code>arm64-v8a</code><span class="rec">推荐</span><span class="dev">绝大多数手机</span><span class="size">约 26 MB</span></div>
+          <div class="dl-row"><code>armeabi-v7a</code><span class="dev">较老的 32 位手机 / 低端设备</span><span class="size">约 23 MB</span></div>
+          <div class="dl-row"><code>x86_64</code><span class="dev">x86_64 模拟器 / 平板 / 部分盒子</span><span class="size">约 28 MB</span></div>
+          <div class="dl-row"><code>universal</code><span class="dev">不确定架构时选它，兼容所有架构</span><span class="size">约 73 MB</span></div>
+        </div>
+        <p class="note">怎么确认架构：设置 → 我的设备 → 处理器型号；或用 CPU-Z / AIDA64 查看 ABI 一栏。GitHub 在国内访问可能不稳定，如打不开可多试几次或更换网络。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="disclaimer">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-num">肆</span>
+        <h2 class="sec-title">免责声明</h2>
+      </div>
+      <div class="sec-body legal">
+        <p>本应用为第三方个人开发的播放工具，与哔哩哔哩官方无任何关联，不代表、也不受哔哩哔哩官方授权或认可。</p>
+        <p>应用内所有音频、封面、文字等内容均来自第三方平台的公开链接，版权归原作者及相关权利人所有；本应用不存储、不修改、不二次分发任何内容。</p>
+        <p>内容仅供个人学习、研究与试听交流使用，请勿用于任何商业用途，请勿下载、录制或传播相关内容。</p>
+        <p>请在试听后支持正版：如喜欢某部作品，建议前往官方平台购买、订阅或支持作者。</p>
+        <p>若权利人认为本应用侵犯其合法权益，请通过 GitHub Issues 告知，我们将在核实后及时处理（包括但不限于移除相关入口）。</p>
+        <p>因使用本应用产生的任何直接或间接后果，由使用者自行承担。</p>
+      </div>
     </div>
   </section>
 </main>
 
 <footer>
-  <div class="foot">
+  <div class="foot-in">
     <div class="foot-brand"><img src="logo.png" alt="">阿B听书 · 非官方项目</div>
     <nav class="foot-links">
-      <a href="https://github.com/fengqiao57/abts" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/fengqiao57/abts" target="_blank" rel="noopener">GitHub 仓库</a>
       <a href="https://github.com/fengqiao57/abts/releases/latest" target="_blank" rel="noopener">下载</a>
       <a href="https://github.com/fengqiao57/abts/blob/main/LICENSE" target="_blank" rel="noopener">MIT 协议</a>
     </nav>
   </div>
 </footer>
-
-<script>
-(function(){
-  var nav = document.getElementById('nav');
-  var onScroll = function(){ nav.classList.toggle('scrolled', window.scrollY > 8); };
-  window.addEventListener('scroll', onScroll, { passive: true });
-  onScroll();
-})();
-</script>
 </body>
 </html>
