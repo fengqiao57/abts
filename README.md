@@ -6,9 +6,7 @@
 
 **把有声小说装进一个专注「听」的播放器**
 
-Flutter · Android · 无广告 · 免登录可用
-
-</div>
+Flutter · Android · 无广告 · 永久免费 · 免登录可用
 
 ---
 
@@ -41,19 +39,30 @@ Flutter · Android · 无广告 · 免登录可用
 - 扫码登录（二维码可保存到相册）
 - 外观模式：跟随系统 / 浅色 / 深色
 - 后台留存保护（电池优化豁免引导）
+- 检查更新：一键比对 GitHub Releases，有新版本直接提示下载
 - 分享原作品链接
 
 ## 截图
 
-| 书籍详情（目录 / 已听置灰 / 正序倒序） | 睡眠定时（自定义时长） |
-| --- | --- |
-| ![detail](docs/screenshots/01-detail.jpg) | ![sleep-timer](docs/screenshots/02-sleep-timer.jpg) |
+共 6 张，别错过完整使用流程：
 
-> 欢迎补充更多截图：`adb exec-out screencap -p > docs/screenshots/xx.png`
+| 操作 | 操作 | 操作 |
+| --- | --- | --- |
+| ![screenshot](docs/screenshots/1.jpg) | ![screenshot](docs/screenshots/2.jpg) | ![screenshot](docs/screenshots/3.jpg) |
+| ![screenshot](docs/screenshots/4.jpg) | ![screenshot](docs/screenshots/5.jpg) | ![screenshot](docs/screenshots/6.jpg) |
 
 ## 下载
 
-前往 [Releases](../../releases) 下载对应架构的 APK 安装即可（Android 7.0+，`arm64-v8a` 适用于绝大多数手机）。
+前往 [Releases](../../releases) 下载 APK，安装即可（Android 7.0+，已签名、包名 `dev.pages.abts`，安装包彼此可覆盖升级）。
+
+| 安装包 | 体积 | 适用设备 |
+| --- | --- | --- |
+| `abts-v0.1.0-arm64-v8a.apk` | ~26 MB | **绝大多数手机都选它**（2017 年后的主流安卓机基本都是 arm64） |
+| `abts-v0.1.0-armeabi-v7a.apk` | ~23 MB | 较老的 32 位手机 / 低端设备（armv7） |
+| `abts-v0.1.0-x86_64.apk` | ~28 MB | x86_64 模拟器 / 平板 / 部分盒子 |
+| `abts-v0.1.0-universal.apk` | ~73 MB | 不确定 CPU 架构时选它，一个包兼容所有架构（体积最大） |
+
+> 怎么确认架构：设置 → 我的设备 → 处理器型号；或用 CPU-Z / AIDA64 查看 ABI 一栏。
 
 ## 从源码构建
 

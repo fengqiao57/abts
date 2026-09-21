@@ -54,9 +54,9 @@ int _compareVersion(String a, String b) {
 class AppUpdate {
   AppUpdate._();
 
-  /// TODO：开源发布后填入 GitHub 仓库（留空则「检查更新」提示未配置）
-  static const String githubOwner = '';
-  static const String githubRepo = '';
+  /// GitHub 仓库（检查更新数据源）
+  static const String githubOwner = 'fengqiao57';
+  static const String githubRepo = 'abts';
 
   static bool get configured => githubOwner.isNotEmpty && githubRepo.isNotEmpty;
 
