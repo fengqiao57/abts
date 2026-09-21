@@ -1,10 +1,9 @@
-import 'dart:io';
+import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import 'core/network/bili_client.dart';
@@ -24,52 +23,62 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
 
-  // 立即渲染启动页（LOGO + 加载动画），耗时初始化移到启动页后台执行，避免白屏
+  // 立即渲染启动页（LOGO + 加载动画），初始化在启动页展示期间执行，避免白屏
   runApp(const AbTingShuApp());
 }
 
-/// 启动前的全部耗时初始化（在 AbTingShuApp 中启动页展示期间执行，完成后切首页）
+/// 第一阶段：启动关键初始化。
+///
+/// 全部为本地操作（SharedPreferences / 播放器 / 媒体服务），不做任何网络
+/// 请求；整体 6 秒超时兜底，任何一项异常都不会把用户卡在启动页。
 Future<void> _bootstrap() async {
-  // 友盟统计初始化（保证首启日活采集）
-  await AppAnalytics.init();
-
-  // 通知权限（Android 13+ 锁屏媒体控制需要）
-  if (Platform.isAndroid) {
-    await Permission.notification.request();
+  try {
+    await Future.wait([
+      BiliClient.instance.initLocal(),
+      ShelfStore.instance.load(),
+      ThemeController.instance.load(),
+      SearchHistoryStore.instance.load(),
+      LoginStore.instance.load(),
+    ]).timeout(const Duration(seconds: 6));
+  } catch (e) {
+    debugPrint('[main] local init failed: $e');
   }
 
-  // 网络预热 + 书架加载 + 登录态
-  final client = BiliClient.instance;
-  final shelf = ShelfStore.instance;
-  await Future.wait([
-    client.init(),
-    shelf.load(),
-    ThemeController.instance.load(),
-    SearchHistoryStore.instance.load(),
-    LoginStore.instance.load(),
-  ]);
-  if (client.isLoggedIn) {
-    LoginStore.instance.refreshFromNav();
-  }
-
-  // 播放器初始化 + 系统媒体会话绑定
+  // 播放器初始化 + 系统媒体会话绑定（失败也进主界面，播放时自动降级）
   final player = BookPlayer.instance;
   player.setup();
-  final handler = await AudioService.init(
-    builder: () => BiliAudioHandler(),
-    config: const AudioServiceConfig(
-      androidNotificationChannelId: 'dev.pages.abts.channel.audio',
-      androidNotificationChannelName: '阿B听书',
-      androidNotificationChannelDescription: '播放有声小说',
-      androidNotificationIcon: 'mipmap/ic_launcher',
-      // 暂停（含来电打断）时保留前台服务与通知，避免打断后通知栏直接消失。
-      // 注意：audio_service 要求此时 androidNotificationOngoing 必须为 false。
-      androidNotificationOngoing: false,
-      androidStopForegroundOnPause: false,
-      androidNotificationClickStartsActivity: true,
-    ),
-  );
-  player.attachHandler(handler);
+  try {
+    final handler = await AudioService.init(
+      builder: () => BiliAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'dev.pages.abts.channel.audio',
+        androidNotificationChannelName: '阿B听书',
+        androidNotificationChannelDescription: '播放有声小说',
+        androidNotificationIcon: 'mipmap/ic_launcher',
+        // 暂停（含来电打断）时保留前台服务与通知，避免打断后通知栏直接消失。
+        // 注意：audio_service 要求此时 androidNotificationOngoing 必须为 false。
+        androidNotificationOngoing: false,
+        androidStopForegroundOnPause: false,
+        androidNotificationClickStartsActivity: true,
+      ),
+    ).timeout(const Duration(seconds: 6));
+    player.attachHandler(handler);
+  } catch (e) {
+    debugPrint('[main] audio service init failed: $e');
+  }
+}
+
+/// 第二阶段：非关键请求（统计 / 网络预热 / 登录态刷新）。
+///
+/// 全部在进入主界面之后后台执行，即使全部失败或长时间无响应，
+/// 也只影响对应功能的可用性，绝不阻塞用户进入页面。
+/// （通知权限改为首次播放时按需申请，见 BookPlayer）
+void _bootstrapBackground() {
+  unawaited(AppAnalytics.init());
+  unawaited(BiliClient.instance.warmupIfNeeded());
+  if (BiliClient.instance.isLoggedIn) {
+    unawaited(LoginStore.instance.refreshFromNav());
+  }
 }
 
 class AbTingShuApp extends StatefulWidget {
@@ -90,6 +99,7 @@ class _AbTingShuAppState extends State<AbTingShuApp>
     _bootstrap().whenComplete(() {
       if (!mounted) return;
       setState(() => _ready = true);
+      _bootstrapBackground();
     });
   }
 

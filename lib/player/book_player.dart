@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide AudioTrack;
+import 'package:permission_handler/permission_handler.dart';
 
 import '../core/network/api_config.dart';
 import '../core/storage/shelf_store.dart';
@@ -183,9 +185,23 @@ class BookPlayer extends ChangeNotifier {
   Duration _playTally = Duration.zero;
   Book? _playTallyBook;
   bool _autoShelved = false;
+  bool _notificationAsked = false;
+
+  /// 首次播放时按需申请通知权限（Android 13+ 媒体通知需要）。
+  /// 放在播放动作里而不是启动时：弹窗有明确上下文，且不阻塞进入应用。
+  void _ensureNotificationPermission() {
+    if (_notificationAsked || !Platform.isAndroid) return;
+    _notificationAsked = true;
+    unawaited(() async {
+      try {
+        await Permission.notification.request();
+      } catch (_) {}
+    }());
+  }
 
   /// 开始听书：自动从上次进度继续。失败时回滚，保持原播放状态
   Future<void> playBook(Book book, {int resumeIndex = 0, int resumeMs = 0}) async {
+    _ensureNotificationPermission();
     List<Chapter> chapters;
     if (_book?.bvid == book.bvid && _chapters.isNotEmpty) {
       chapters = _chapters; // 同本书复用列表

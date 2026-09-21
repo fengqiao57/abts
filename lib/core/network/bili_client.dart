@@ -60,8 +60,9 @@ class BiliClient {
     );
   }
 
-  /// 应用启动时持久化兜底
-  Future<void> init() async {
+  /// 本地初始化（启动关键路径，无任何网络请求）：
+  /// 创建 Dio 并从本地恢复 Cookie / WBI 缓存，保证进入主界面即可发请求。
+  Future<void> initLocal() async {
     _setupIo();
     final prefs = await SharedPreferences.getInstance();
     final cookie = prefs.getString(_prefCookie);
@@ -82,7 +83,11 @@ class BiliClient {
         _wbiFetchedAt = int.tryParse(parts[2]) ?? 0;
       }
     }
+  }
 
+  /// 网络预热（进主界面后后台执行，绝不阻塞启动）：
+  /// 种入 buvid、激活设备、拉取 WBI 密钥；失败静默，不影响使用。
+  Future<void> warmupIfNeeded() async {
     if (!_jar.ready || _needFreshWbiKeys()) {
       await warmup();
     }
