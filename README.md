@@ -46,10 +46,11 @@ Flutter · Android · 无广告 · 永久免费 · 免登录可用
 
 共 6 张，别错过完整使用流程：
 
-| 操作 | 操作 | 操作 |
+| 书架（精确进度 / 继续收听） | 发现（分类 / 精选主播） | 我的（收藏 / 设置入口） |
 | --- | --- | --- |
-| ![screenshot](docs/screenshots/1.jpg) | ![screenshot](docs/screenshots/2.jpg) | ![screenshot](docs/screenshots/3.jpg) |
-| ![screenshot](docs/screenshots/4.jpg) | ![screenshot](docs/screenshots/5.jpg) | ![screenshot](docs/screenshots/6.jpg) |
+| ![书架](docs/screenshots/1.jpg) | ![发现](docs/screenshots/2.jpg) | ![我的](docs/screenshots/3.jpg) |
+| 书籍详情（分P目录 / 已听置灰） | 播放（连播 / 睡眠定时入口） | 睡眠定时（自定义 1~720 分钟） |
+| ![书籍详情](docs/screenshots/4.jpg) | ![播放](docs/screenshots/5.jpg) | ![睡眠定时](docs/screenshots/6.jpg) |
 
 ## 下载
 
