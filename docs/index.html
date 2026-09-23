@@ -189,6 +189,28 @@ section[id]{scroll-margin-top:72px}
 .dl-row .size{margin-left:auto;color:var(--ice);font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .note{margin-top:18px;color:var(--hint);font-size:13.5px;line-height:1.9}
 
+.dl-pan{margin-top:22px;border-top:1px solid var(--line-soft);padding-top:22px}
+.pan-head{margin:0 0 15px;font-size:13px;color:var(--hint);letter-spacing:.08em}
+.pan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.pan{
+  display:flex;align-items:center;gap:13px;
+  border:1px solid var(--line);border-radius:16px;background:var(--surface);
+  padding:15px 17px;color:var(--moon);
+  transition:transform .18s ease,border-color .18s ease,background .18s ease;
+}
+.pan:hover{transform:translateY(-3px);border-color:rgba(168,217,252,.38);background:var(--surface-2)}
+.pan-mark{
+  flex:0 0 38px;width:38px;height:38px;border-radius:11px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:17px;font-weight:700;color:#fff;
+}
+.mark-qk{background:linear-gradient(140deg,#22C3D6,#0E7FB4)}
+.mark-xl{background:linear-gradient(140deg,#FFC04D,#FF7A18)}
+.mark-bd{background:linear-gradient(140deg,#4E6EFF,#2932E1)}
+.pan-name{font-size:15px;font-weight:600;line-height:1.4}
+.pan-name em{display:block;font-style:normal;font-size:12px;font-weight:400;color:var(--hint);margin-top:3px}
+.pan svg{margin-left:auto;width:15px;height:15px;fill:none;stroke:var(--hint);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
 .legal{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:clamp(22px,4.5vw,40px)}
 .legal p{margin:0;padding:16px 0;color:var(--ice);font-size:14px;line-height:1.9}
 .legal p + p{border-top:1px solid var(--line-soft)}
@@ -225,6 +247,7 @@ footer{
   .wave{height:32px;gap:4px}
   .wave i{width:4px}
   .dl-top .btn{width:100%;justify-content:center}
+  .pan-grid{grid-template-columns:1fr}
   .dl-row{flex-wrap:wrap;gap:8px}
   .dl-row .size{margin-left:0;width:100%}
   .foot-in{flex-direction:column;align-items:flex-start;gap:14px}
@@ -368,7 +391,27 @@ footer{
           <div class="dl-row"><code>x86_64</code><span class="dev">x86_64 模拟器 / 平板 / 部分盒子</span><span class="size">约 28 MB</span></div>
           <div class="dl-row"><code>universal</code><span class="dev">不确定架构时选它，兼容所有架构</span><span class="size">约 73 MB</span></div>
         </div>
-        <p class="note">怎么确认架构：设置 → 我的设备 → 处理器型号；或用 CPU-Z / AIDA64 查看 ABI 一栏。GitHub 在国内访问可能不稳定，如打不开可多试几次或更换网络。</p>
+        <div class="dl-pan">
+          <p class="pan-head">网盘分流 · 国内直连（免访问 GitHub）</p>
+          <div class="pan-grid">
+            <a class="pan" href="https://pan.quark.cn/s/2462f4fc7fbf" target="_blank" rel="noopener">
+              <span class="pan-mark mark-qk">夸</span>
+              <span class="pan-name">夸克网盘<em>全量安装包 · 无需提取码</em></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7m0 0H8m9 0v9"/></svg>
+            </a>
+            <a class="pan" href="https://pan.xunlei.com/s/VP22CJIak7GKht4DwHJEySFwA1?pwd=2igj" target="_blank" rel="noopener">
+              <span class="pan-mark mark-xl">迅</span>
+              <span class="pan-name">迅雷网盘<em>提取码：2igj</em></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7m0 0H8m9 0v9"/></svg>
+            </a>
+            <a class="pan" href="https://pan.baidu.com/s/1doaqW0Ggn3fR1wIFN9Vbvw?pwd=abts" target="_blank" rel="noopener">
+              <span class="pan-mark mark-bd">百</span>
+              <span class="pan-name">百度网盘<em>提取码：abts</em></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7m0 0H8m9 0v9"/></svg>
+            </a>
+          </div>
+        </div>
+        <p class="note">怎么确认架构：设置 → 我的设备 → 处理器型号；或用 CPU-Z / AIDA64 查看 ABI 一栏。GitHub 在国内访问可能不稳定，如打不开可优先使用上方网盘分流，或更换网络重试。</p>
       </div>
     </div>
   </section>
