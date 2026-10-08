@@ -24,11 +24,13 @@ class BiliAudioHandler extends BaseAudioHandler {
           MediaAction.play,
           MediaAction.pause,
           MediaAction.stop,
+          MediaAction.setSpeed,
         },
         androidCompactActionIndices: [0, 1, 2],
         processingState: AudioProcessingState.idle,
         playing: false,
         updatePosition: Duration.zero,
+        speed: _player.speed,
       ),
     );
   }
@@ -55,6 +57,10 @@ class BiliAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> rewind() => _player.seekRelative(-15);
+
+  /// 系统媒体会话（Android Auto / 蓝牙设备等）下发倍速
+  @override
+  Future<void> setSpeed(double speed) => _player.setSpeed(speed);
 
   @override
   Future<void> stop() => _player.stop();

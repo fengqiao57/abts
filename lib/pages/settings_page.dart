@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_theme.dart';
+import '../player/book_player.dart';
 import '../services/auth_store.dart';
 import '../services/device_service.dart';
+import '../utils/format.dart';
+import '../widgets/speed_sheet.dart';
 import 'login_page.dart';
 
 /// 设置（独立页面）：账号信息 + 播放与后台。未登录也可进入
@@ -87,6 +90,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<LoginStore>();
+    final player = context.watch<BookPlayer>();
     return Scaffold(
       appBar: AppBar(title: const Text('系统设置')),
       body: ListView(
@@ -95,6 +99,20 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildAccountCard(auth),
           const SizedBox(height: 12),
           _sectionTitle('播放与后台'),
+          ListTile(
+            leading: Icon(Icons.speed_rounded, color: AppTheme.accent),
+            title: Text(
+              '播放倍速',
+              style: TextStyle(fontSize: 14, color: AppTheme.textMain),
+            ),
+            subtitle: Text(
+              '当前 ${Fmt.speed(player.speed)} · 支持 0.75× ~ 2.00×，可 0.01× 微调',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+            ),
+            trailing: Icon(Icons.chevron_right_rounded,
+                size: 20, color: AppTheme.textHint),
+            onTap: () => showSpeedSheet(context),
+          ),
           SwitchListTile(
             value: _ignoring,
             onChanged: _loading ? null : _toggle,

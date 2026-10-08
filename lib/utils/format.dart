@@ -35,4 +35,7 @@ class Fmt {
     if (m > 0) return '$m分$s秒';
     return '$s秒';
   }
+
+  /// 倍速文案：1.0 -> 1.00×，1.25 -> 1.25×（统一两位小数，步长 0.05 时档位宽度一致）
+  static String speed(double v) => '${v.toStringAsFixed(2)}×';
 }

@@ -1,0 +1,137 @@
+name: 构建并发布 APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 构建 Release APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 查看版本
+        run: flutter --version
+
+      - name: 补齐 Android SDK 组件
+        run: |
+          set -e
+          SM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ -x "$SM" ]; then
+            yes | "$SM" --licenses > /dev/null 2>&1 || true
+            for p in "platforms;android-35" "platforms;android-36" "platforms;android-37" \
+                     "build-tools;35.0.0" "build-tools;36.0.0" "build-tools;37.0.0"; do
+              "$SM" --install "$p" > /dev/null 2>&1 || true
+            done
+          fi
+          ls "$ANDROID_HOME/platforms" || true
+
+      - name: 拉取依赖
+        run: flutter pub get
+
+      - name: 修补第三方插件重复类（umeng_common_sdk 同名 Kotlin 空壳）
+        run: |
+          KT="$(find "$HOME/.pub-cache" -path "*umeng_common_sdk*/android/src/main/kotlin/com/umeng/umeng_common_sdk/UmengCommonSdkPlugin.kt" 2>/dev/null | head -1)"
+          if [ -n "$KT" ]; then
+            rm -f "$KT"
+            echo "已移除与 Java 实现重名的 Kotlin 空壳：$KT"
+          fi
+
+      - name: 准备签名证书（配置了 Secret 才启用）
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/abts-release.jks
+            cat > android/key.properties <<EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=abts-release.jks
+          EOF
+            echo "已启用正式签名"
+          else
+            echo "未配置签名 Secret，使用 debug 签名构建（可安装，但与正式包不通用）"
+          fi
+
+      - name: 构建按架构分包 APK
+        run: flutter build apk --release --split-per-abi
+
+      - name: 构建通用包（兼容所有架构）
+        run: flutter build apk --release
+
+      - name: 整理产物
+        id: dist
+        run: |
+          set -e
+          mkdir -p dist
+          VER="${GITHUB_REF_NAME#v}"
+          [ -n "$VER" ] || VER="$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')"
+          for f in build/app/outputs/flutter-apk/*.apk; do
+            base="$(basename "$f" .apk)"
+            abi="${base%-release}"
+            abi="${abi#app-}"
+            if [ "$abi" = "app" ]; then abi="universal"; fi
+            cp "$f" "dist/abts-v${VER}-${abi}.apk"
+          done
+          ls -lh dist
+
+      - name: 上传构建产物
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: abts-apks
+          path: dist/*.apk
+          retention-days: 7
+
+      - name: 发布 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 阿B听书 ${{ github.ref_name }}
+          body: |
+            ## 更新内容
+            - 音量增减幅改为**滑块调节**：负九级 ~ 正五级（-90% ~ +50%），拖动即时生效
+            - 大字百分比显示当前音量，箭头按 1 级（10%）步进，一键「重置」回原始音量
+            - 保留常用等级快捷按钮；正数增幅、负数降幅，换章与重启后保持
+            - 播放倍速滑块连续调节：0.75× ~ 2.00×，最小粒度 **0.01×**
+            - 本系列版本使用**正式签名证书**构建
+
+            ## 下载
+            | 安装包 | 适用设备 |
+            | --- | --- |
+            | `abts-${{ github.ref_name }}-arm64-v8a.apk` | 绝大多数手机（2017 年后的主流安卓机） |
+            | `abts-${{ github.ref_name }}-armeabi-v7a.apk` | 较老的 32 位手机 / 低端设备 |
+            | `abts-${{ github.ref_name }}-x86_64.apk` | x86_64 模拟器 / 平板 / 盒子 |
+            | `abts-${{ github.ref_name }}-universal.apk` | 不确定 CPU 架构时选它，兼容所有架构（体积最大） |
+
+            安装即可，包名 `dev.pages.abts`，Android 7.0+。
+
+            ## 签名信息
+            正式签名证书 SHA-256：
+            `82:3E:F0:33:E6:B1:8B:8E:E9:B6:E4:FC:F1:5D:39:A0:B8:F2:CC:B6:F3:1B:A4:B1:E7:7F:11:61:1F:79:4E:ED`
+
+            ⚠️ 本版本改用正式签名，与历史 debug 签名的安装包**不兼容**，覆盖安装前请先卸载旧版本（听书进度与收藏在本地，卸载会一并清除，建议先确认已同步）。
+          files: dist/*.apk

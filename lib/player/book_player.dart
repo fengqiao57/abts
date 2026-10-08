@@ -5,6 +5,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide AudioTrack;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/network/api_config.dart';
 import '../core/storage/shelf_store.dart';
@@ -41,6 +42,8 @@ class BookPlayer extends ChangeNotifier {
   final Map<int, ({String url, int ts})> _urlCache = {};
   Timer? _positionTimer;
   Timer? _sleepTimer;
+  Timer? _speedApplyTimer;
+  Timer? _volumeLevelApplyTimer;
   Duration _sleepRemaining = Duration.zero;
 
   /// 播放位置（高频，独立于 notifyListeners，避免整页频繁重建）
@@ -53,6 +56,45 @@ class BookPlayer extends ChangeNotifier {
   static const double _duckedVolume = 0.05;
   bool _ducking = false;
   double _volumeBeforeDuck = 1.0;
+
+  /// 倍速可调区间与最小步长（滑块按 0.01 取值）
+  static const double minSpeed = 0.75;
+  static const double maxSpeed = 2.0;
+  static const double _speedStep = 0.01;
+
+  /// 四舍五入到 0.01 并夹在合法区间内（消除浮点误差，如 1.1500000000000001）
+  static double normalizeSpeed(double value) {
+    final v = (value / _speedStep).round() * _speedStep;
+    return double.parse(v.toStringAsFixed(2)).clamp(minSpeed, maxSpeed);
+  }
+
+  /// 常用倍速预设（面板底部快捷按钮）
+  static const List<double> speedPresets = <double>[0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  static const double _defaultSpeed = 1.0;
+  static const String _speedKey = 'abts_playback_speed';
+
+  /// 当前播放倍速（持久化，换章与重启后保持）
+  double _speed = _defaultSpeed;
+  double get speed => _speed;
+
+  /// 音量增减幅等级：正数增幅、负数降幅，0 为关闭（原始音量）。
+  /// 正 N 级 = (100 + 10N)%，负 N 级 = (100 - 10N)%。
+  static const List<int> volumeLevels = <int>[
+    5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9,
+  ];
+
+  /// 常用等级快捷值（面板底部按钮）
+  static const List<int> quickVolumeLevels = <int>[-9, -6, -3, 0, 1, 3, 5];
+  static const int _defaultVolumeLevel = 0;
+  static const String _volumeLevelKey = 'abts_volume_level';
+
+  /// 当前音量增减幅等级（持久化，换章与重启后保持）
+  int _volumeLevel = _defaultVolumeLevel;
+  int get volumeLevel => _volumeLevel;
+
+  /// 目标音量（%）
+  double get _targetVolume =>
+      (100 + 10 * _volumeLevel).clamp(10.0, 200.0).toDouble();
 
   Player get player => _player;
   Book? get book => _book;
@@ -142,6 +184,11 @@ class BookPlayer extends ChangeNotifier {
         unawaited(_restoreAfterFocusGain());
       }
       ..start();
+
+    // 恢复上次选择的倍速（本地读取，失败则保持 1.0×）
+    unawaited(_restoreSpeed());
+    // 恢复上次选择的音量增减幅
+    unawaited(_restoreVolumeLevel());
   }
 
   /// 系统打断（来电等）导致的暂停：不放弃焦点，等待 GAIN 后自动续播
@@ -286,6 +333,10 @@ class BookPlayer extends ChangeNotifier {
           if (resumeMs > 0) {
             await _seekToResume(resumeMs);
           }
+          // 换源后重新下发倍速：部分设备 open() 会把播放速率重置为 1.0
+          if (_speed != _defaultSpeed) await _applySpeed();
+          // 同理，重新下发音量增减幅
+          if (_volumeLevel != _defaultVolumeLevel) await _applyVolume();
           if (_error != null) _error = null;
           ok = true;
           _playbackUrl = url;
@@ -456,12 +507,14 @@ class BookPlayer extends ChangeNotifier {
           MediaAction.play,
           MediaAction.pause,
           MediaAction.stop,
+          MediaAction.setSpeed,
         },
         androidCompactActionIndices: const [0, 1, 2],
         processingState: processing,
         playing: playing,
         updatePosition: pos,
         bufferedPosition: dur,
+        speed: _speed,
       ),
     );
   }
@@ -511,8 +564,143 @@ class BookPlayer extends ChangeNotifier {
     await seek(target < Duration.zero ? Duration.zero : target);
   }
 
+  // ---------- 播放倍速 ----------
+
+  /// 切换倍速：立即生效、写入本地，并把速率同步给系统媒体会话
+  ///
+  /// [interactive] 为 true 表示正在拖动滑块：只更新状态并节流下发速率，
+  /// 不打点、不写盘、不推送媒体会话，避免高频事件把 UI 与播放器线程压满。
+  Future<void> setSpeed(double value, {bool interactive = false}) async {
+    if (value <= 0) value = _defaultSpeed;
+    final v = normalizeSpeed(value);
+    if (v == _speed) return;
+    _speed = v;
+
+    if (interactive) {
+      _scheduleSpeedApply();
+    } else {
+      _speedApplyTimer?.cancel();
+      _speedApplyTimer = null;
+      await _applySpeed();
+      unawaited(_saveSpeed());
+      AppAnalytics.onEvent('speed_change', {'speed': v});
+      _pushState(force: true);
+    }
+    notifyListeners();
+  }
+
+  /// 拖动过程中的节流下发：拖动结束后再补一次，保证最终值一定生效
+  void _scheduleSpeedApply() {
+    if (_speedApplyTimer?.isActive ?? false) return;
+    _speedApplyTimer = Timer(const Duration(milliseconds: 80), () {
+      _speedApplyTimer = null;
+      unawaited(_applySpeed());
+    });
+  }
+
+  /// 把当前倍速下发给 media_kit（变速不变调）
+  Future<void> _applySpeed() async {
+    try {
+      await _player.setRate(_speed);
+    } catch (e) {
+      debugPrint('[BookPlayer] 设置倍速失败: $e');
+    }
+  }
+
+  Future<void> _saveSpeed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_speedKey, _speed);
+    } catch (_) {}
+  }
+
+  /// 启动时恢复上次倍速
+  Future<void> _restoreSpeed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getDouble(_speedKey);
+      if (v == null || v <= 0 || v == _defaultSpeed) return;
+      _speed = normalizeSpeed(v);
+      await _applySpeed();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[BookPlayer] 恢复倍速失败: $e');
+    }
+  }
+
+  // ---------- 音量增减幅 ----------
+
+  /// 设置音量增减幅等级：正数增幅、负数降幅、0 关闭。
+  ///
+  /// [interactive] 为 true 表示正在拖动滑块：只更新状态并节流下发，
+  /// 不打点、不写盘、不推送媒体会话，避免拖动时堆积 mpv 属性请求。
+  Future<void> setVolumeLevel(int level, {bool interactive = false}) async {
+    final v = level.clamp(-9, 5);
+    if (v == _volumeLevel) return;
+    _volumeLevel = v;
+
+    if (interactive) {
+      _scheduleVolumeLevelApply();
+    } else {
+      _volumeLevelApplyTimer?.cancel();
+      _volumeLevelApplyTimer = null;
+      await _applyVolume();
+      unawaited(_saveVolumeLevel());
+      AppAnalytics.onEvent('volume_level_change', {'level': v});
+    }
+    notifyListeners();
+  }
+
+  /// 拖动过程中的节流下发：拖动结束后再补一次，保证最终值一定生效
+  void _scheduleVolumeLevelApply() {
+    if (_volumeLevelApplyTimer?.isActive ?? false) return;
+    _volumeLevelApplyTimer = Timer(const Duration(milliseconds: 80), () {
+      _volumeLevelApplyTimer = null;
+      unawaited(_applyVolume());
+    });
+  }
+
+  /// 把目标音量下发给 media_kit
+  Future<void> _applyVolume() async {
+    try {
+      final p = _player.platform;
+      if (p is NativePlayer) {
+        // mpv 默认 volume-max=130，先放宽到 200 才能支持正五级（150%）
+        await p.setProperty('volume-max', '200');
+      }
+      await _player.setVolume(_targetVolume);
+    } catch (e) {
+      debugPrint('[BookPlayer] 设置音量失败: $e');
+    }
+  }
+
+  Future<void> _saveVolumeLevel() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_volumeLevelKey, _volumeLevel);
+    } catch (_) {}
+  }
+
+  /// 启动时恢复上次音量等级
+  Future<void> _restoreVolumeLevel() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getInt(_volumeLevelKey);
+      if (v == null || v == _defaultVolumeLevel) return;
+      _volumeLevel = v.clamp(-9, 5);
+      await _applyVolume();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[BookPlayer] 恢复音量等级失败: $e');
+    }
+  }
+
   Future<void> stop() async {
     _pausedByInterruption = false;
+    _speedApplyTimer?.cancel();
+    _volumeLevelApplyTimer?.cancel();
+    _volumeLevelApplyTimer = null;
+    _speedApplyTimer = null;
     await _player.stop();
     unawaited(AudioFocus.instance.abandon());
     _loaded = false;
