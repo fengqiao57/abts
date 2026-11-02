@@ -1,0 +1,57 @@
+{
+  "name": "abts-desktop",
+  "productName": "ABTS Desktop",
+  "version": "1.0.2",
+  "description": "阿B听书 Windows 桌面版",
+  "author": "ABTS Desktop Contributors",
+  "license": "MIT",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "start": "electron .",
+    "test": "node --test tests/core.test.cjs",
+    "test:desktop": "node tests/desktop.cjs",
+    "test:shortcuts": "node tests/shortcuts.cjs",
+    "test:window-input": "node tests/window-input.cjs",
+    "package": "npm run build && electron-builder --win portable --x64"
+  },
+  "dependencies": {
+    "koffi": "3.3.5",
+    "lucide-react": "0.468.0",
+    "qrcode": "1.5.4",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "5.0.4",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "playwright": "1.56.1",
+    "vite": "7.3.7"
+  },
+  "build": {
+    "appId": "dev.abts.desktop",
+    "asar": true,
+    "directories": {
+      "output": "../../outputs/build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "LICENSE",
+      "UPSTREAM.md",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/app.ico",
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": true
+    },
+    "artifactName": "ABTS-Desktop-${version}-win-x64.${ext}"
+  }
+}
