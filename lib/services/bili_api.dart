@@ -45,6 +45,13 @@ class BiliApi {
     '沙雕', '速看', 'reaction', '预告', '游戏实况', '配音秀',
   ];
 
+  /// 播客/电台类特征词：近两年 B 站有不少播客、访谈类长音频，
+  /// 标题命中且时长足够时同样按「可收听内容」放行（仅新增接受路径，
+  /// 不改变原有听书书籍的判定规则）。
+  static const _podcastHints = <String>[
+    '播客', '电台', '对谈', '访谈', '脱口秀', '圆桌', '茶话会',
+  ];
+
   static bool _hasAudioHint(String s) => _audioHints.any(s.contains);
 
   /// 题材词：搜索词本身是这些题材时，长内容按听书放行（如「评书 单田芳」）
@@ -77,6 +84,9 @@ class BiliApi {
     if (_hasAudioHint(meta) && seconds >= 1800) return true;
 
     if (_genreHints.any(keyword.contains) && seconds >= 1800) return true;
+
+    // 5. 播客/电台：标题命中且 >= 10 分钟（只看标题，避免简介蹭词混入短视频）
+    if (_podcastHints.any(title.contains) && seconds >= 600) return true;
     return false;
   }
 

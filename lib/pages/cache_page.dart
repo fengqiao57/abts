@@ -7,6 +7,7 @@ import '../core/theme/app_theme.dart';
 import '../models/book.dart';
 import '../player/book_player.dart';
 import '../widgets/book_cover.dart';
+import '../widgets/tv_page_scaffold.dart';
 import 'player_page.dart';
 
 /// 离线缓存管理：按书分组，点开看已缓存章节，可单个/批量删除、可直接播放
@@ -17,7 +18,6 @@ class CachePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final cache = context.watch<CacheStore>();
     final all = cache.entries;
-    final tasks = cache.tasks.where((t) => !t.done && !t.failed).toList();
     final failures = cache.failures;
     final caching = cache.pendingCount > 0;
     final showFail = failures.isNotEmpty;
@@ -31,20 +31,18 @@ class CachePage extends StatelessWidget {
       ..sort((a, b) => grouped[b]!.first.cachedAt
           .compareTo(grouped[a]!.first.cachedAt));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('离线缓存'),
-        actions: [
-          if (all.isNotEmpty)
-            TextButton(
-              onPressed: () => _confirmClearAll(context, cache),
-              child: Text(
-                '清空',
-                style: TextStyle(color: AppTheme.accent, fontSize: 14),
-              ),
+    return TvPageScaffold(
+      title: const Text('离线缓存'),
+      actions: [
+        if (all.isNotEmpty)
+          TextButton(
+            onPressed: () => _confirmClearAll(context, cache),
+            child: Text(
+              '清空',
+              style: TextStyle(color: AppTheme.accent, fontSize: 14),
             ),
-        ],
-      ),
+          ),
+      ],
       body: all.isEmpty && !caching && !showFail
           ? const _CacheEmpty()
           : ListView.builder(
@@ -54,7 +52,7 @@ class CachePage extends StatelessWidget {
                 if (i == 0) return _buildSummary(context, cache, all.length);
                 var idx = i - 1;
                 if (caching && idx == 0) {
-                  return _buildProgressCard(context, cache, tasks);
+                  return _ProgressCard(cache: cache);
                 }
                 if (caching) idx--;
                 if (showFail && idx == 0) {
@@ -65,78 +63,6 @@ class CachePage extends StatelessWidget {
                 return _buildBookCard(context, cache, bvid, grouped[bvid]!);
               },
             ),
-    );
-  }
-
-  /// 后台缓存进度卡片
-  Widget _buildProgressCard(
-      BuildContext context, CacheStore cache, List<CacheTask> tasks) {
-    final pct = (cache.queueProgress * 100).round();
-    final cur = tasks.isEmpty ? null : tasks.first;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.accent.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              SizedBox(
-                width: 15,
-                height: 15,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppTheme.accent,
-                  value: cache.queueProgress > 0 ? cache.queueProgress : null,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '正在后台缓存',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textMain,
-                  ),
-                ),
-              ),
-              Text(
-                '$pct%',
-                style: TextStyle(fontSize: 13, color: AppTheme.accent),
-              ),
-            ],
-          ),
-          if (cur != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              cur.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: AppTheme.textSub),
-            ),
-          ],
-          const SizedBox(height: 6),
-          Text(
-            () {
-              final stat = cache.batchStat;
-              if (stat.total > 0) {
-                return '本批共 ${stat.total} 集，已完成 ${stat.done} 集'
-                    '${stat.failed > 0 ? ' · 失败 ${stat.failed} 集' : ''}'
-                    '${cache.queueLength > 0 ? ' · 排队 ${cache.queueLength} 集' : ''}'
-                    ' · 可离开本页';
-              }
-              return '排队 ${cache.queueLength} 集 · 可离开本页';
-            }(),
-            style: TextStyle(fontSize: 11, color: AppTheme.textHint),
-          ),
-        ],
-      ),
     );
   }
 
@@ -380,6 +306,215 @@ Icon(Icons.chevron_right_rounded, color: AppTheme.textHint),
       ),
     );
     if (ok == true) await cache.clearAll();
+  }
+}
+
+/// 后台缓存进度卡片：进度 + 暂停/继续 + 取消全部 + 任务列表
+class _ProgressCard extends StatefulWidget {
+  final CacheStore cache;
+  const _ProgressCard({required this.cache});
+
+  @override
+  State<_ProgressCard> createState() => _ProgressCardState();
+}
+
+class _ProgressCardState extends State<_ProgressCard> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cache = widget.cache;
+    final paused = cache.paused;
+    final tasks = cache.pendingTasks;
+    final pct = (cache.queueProgress * 100).round();
+    final cur = tasks.isEmpty ? null : tasks.first;
+    final activeKey = cache.activeKey;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.fromLTRB(14, 8, 6, 10),
+      decoration: BoxDecoration(
+        color: AppTheme.accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (paused)
+                Icon(Icons.pause_circle_outline_rounded,
+                    size: 17, color: AppTheme.accent)
+              else
+                SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.accent,
+                    value: cache.queueProgress > 0 ? cache.queueProgress : null,
+                  ),
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  paused ? '缓存已暂停' : '正在后台缓存',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textMain,
+                  ),
+                ),
+              ),
+              Text(
+                '$pct%',
+                style: TextStyle(fontSize: 13, color: AppTheme.accent),
+              ),
+              IconButton(
+                tooltip: paused ? '继续缓存' : '暂停缓存',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                  size: 20,
+                  color: AppTheme.accent,
+                ),
+                onPressed: () =>
+                    paused ? cache.resumeQueue() : cache.pauseQueue(),
+              ),
+              IconButton(
+                tooltip: '取消全部任务',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.close_rounded,
+                    size: 18, color: AppTheme.textSub),
+                onPressed: () => _confirmCancelAll(context, cache),
+              ),
+            ],
+          ),
+          if (cur != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              paused
+                  ? '已中断「${cur.title}」，继续后将重新下载这一集'
+                  : cur.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  () {
+                    final stat = cache.batchStat;
+                    if (stat.total > 0) {
+                      return '本批共 ${stat.total} 集，已完成 ${stat.done} 集'
+                          '${stat.failed > 0 ? ' · 失败 ${stat.failed} 集' : ''}'
+                          '${cache.queueLength > 0 ? ' · 排队 ${cache.queueLength} 集' : ''}'
+                          ' · 可离开本页';
+                    }
+                    return '排队 ${cache.queueLength} 集 · 可离开本页';
+                  }(),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textHint),
+                ),
+              ),
+              if (tasks.isNotEmpty)
+                TextButton(
+                  onPressed: () => setState(() => _open = !_open),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 28),
+                  ),
+                  child: Text(
+                    _open ? '收起' : '任务列表 (${tasks.length})',
+                    style: TextStyle(fontSize: 12, color: AppTheme.accent),
+                  ),
+                ),
+            ],
+          ),
+          if (_open) ...[
+            const SizedBox(height: 2),
+            ...tasks.take(8).map((t) {
+              final isActive = !paused && t.key == activeKey;
+              return Row(
+                children: [
+                  Icon(
+                    isActive
+                        ? Icons.downloading_rounded
+                        : Icons.schedule_rounded,
+                    size: 14,
+                    color: isActive ? AppTheme.accent : AppTheme.textHint,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      t.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color:
+                            isActive ? AppTheme.textMain : AppTheme.textSub,
+                      ),
+                    ),
+                  ),
+                  if (isActive)
+                    Text(
+                      '${(t.progress * 100).round()}%',
+                      style: TextStyle(fontSize: 11, color: AppTheme.accent),
+                    ),
+                  IconButton(
+                    tooltip: '取消这一集',
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.close_rounded,
+                        size: 16, color: AppTheme.textHint),
+                    onPressed: () => cache.cancelTask(t.bvid, t.cid),
+                  ),
+                ],
+              );
+            }),
+            if (tasks.length > 8)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, left: 22),
+                child: Text(
+                  '还有 ${tasks.length - 8} 集排队中…',
+                  style: TextStyle(fontSize: 11, color: AppTheme.textHint),
+                ),
+              ),
+            const SizedBox(height: 4),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmCancelAll(BuildContext context, CacheStore cache) async {
+    final n = cache.pendingCount;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text('取消全部缓存任务',
+            style: TextStyle(color: AppTheme.textMain, fontSize: 17)),
+        content: Text(
+          '将取消 $n 个还没下完的任务，已缓存好的集不受影响。',
+          style: TextStyle(color: AppTheme.textSub, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('再想想', style: TextStyle(color: AppTheme.textSub)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('全部取消',
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) cache.cancelAll();
   }
 }
 

@@ -156,6 +156,8 @@ class AppTheme {
       brightness: b,
       scaffoldBackgroundColor: c.bg,
       splashFactory: InkSparkle.splashFactory,
+      // 遥控器/键盘导航时焦点需要有明显可见的底色（TV 端关键）
+      focusColor: accent.withValues(alpha: 0.25),
     );
 
     return base.copyWith(
@@ -183,6 +185,11 @@ class AppTheme {
         backgroundColor: c.surface,
         indicatorColor: accent.withValues(alpha: 0.16),
         height: 64,
+        overlayColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.focused)
+              ? accent.withValues(alpha: 0.22)
+              : null,
+        ),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 12,
@@ -199,6 +206,18 @@ class AppTheme {
           ),
         ),
       ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: c.surface,
+        indicatorColor: accent.withValues(alpha: 0.16),
+        selectedIconTheme: const IconThemeData(color: accent, size: 26),
+        unselectedIconTheme: IconThemeData(color: c.textSub, size: 26),
+        selectedLabelTextStyle: const TextStyle(
+          color: accent,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelTextStyle: TextStyle(color: c.textSub, fontSize: 13),
+      ),
       dividerTheme: DividerThemeData(color: c.divider, thickness: 0.6),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -206,6 +225,23 @@ class AppTheme {
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+          ),
+        ).copyWith(
+          // TV/键盘导航聚焦时按钮明显提亮，遥控器上能看清当前按钮
+          overlayColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.focused)
+                ? Colors.white.withValues(alpha: 0.34)
+                : null,
+          ),
+        ),
+      ),
+      // 图标按钮（播放器控制、刷新等）聚焦时给一圈可见的主题色
+      iconButtonTheme: IconButtonThemeData(
+        style: ButtonStyle(
+          overlayColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.focused)
+                ? accent.withValues(alpha: 0.22)
+                : null,
           ),
         ),
       ),

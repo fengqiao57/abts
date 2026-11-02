@@ -4,12 +4,14 @@ import 'package:provider/provider.dart';
 import '../core/storage/cache_store.dart';
 import '../core/storage/shelf_store.dart';
 import '../core/theme/app_theme.dart';
+import '../core/theme/tv_mode.dart';
 import '../data/seed_books.dart';
 import '../models/book.dart';
 import '../player/book_player.dart';
 import '../services/bili_api.dart';
 import '../widgets/book_cards.dart';
 import '../widgets/book_cover.dart';
+import '../widgets/focus_ring.dart';
 import 'book_detail_page.dart';
 import 'cache_page.dart';
 import 'player_page.dart';
@@ -27,6 +29,9 @@ class DiscoverPage extends StatefulWidget {
 class _DiscoverPageState extends State<DiscoverPage> {
   final _controller = TextEditingController();
   final _bili = BiliApi.instance;
+
+  // 搜索条聚焦状态（TV/键盘导航时显示描边）
+  bool _searchFocused = false;
 
   // 分类浏览
   int _cat = 0;
@@ -110,6 +115,27 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
   @override
   Widget build(BuildContext context) {
+    final wide = TvMode.useWideLayout(context);
+    // 宽屏（电视）：顶栏与搜索入口都交给侧栏，页面内容整屏可滚，
+    // 分类栏随内容滚走，不再固定占住顶部。
+    if (wide) {
+      final cat = DiscoverSeeds.categories[_cat];
+      return Scaffold(
+        body: RefreshIndicator(
+          onRefresh: () => _loadBrowse(force: true),
+          color: AppTheme.accent,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+            children: [
+              _buildCategoryBar(),
+              const SizedBox(height: 4),
+              ..._buildBrowseChildren(cat),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('发现')),
       body: Column(
@@ -123,28 +149,37 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     height: 44,
                     child: InkWell(
                       onTap: _openSearch,
+                      onFocusChange: (v) {
+                        if (mounted && v != _searchFocused) {
+                          setState(() => _searchFocused = v);
+                        }
+                      },
                       borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        alignment: Alignment.centerLeft,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.divider),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.search,
-                                size: 18, color: AppTheme.textHint),
-                            const SizedBox(width: 8),
-                            Text(
-                              '搜索书名 / 作者 / 主播',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppTheme.textHint,
+                      child: FocusRing(
+                        focused: _searchFocused,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppTheme.divider),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.search,
+                                  size: 18, color: AppTheme.textHint),
+                              const SizedBox(width: 8),
+                              Text(
+                                '搜索书名 / 作者 / 主播',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: AppTheme.textHint,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -164,56 +199,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     final cat = DiscoverSeeds.categories[_cat];
     return Column(
       children: [
-        // 分类栏
-        SizedBox(
-          height: 46,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            itemCount: DiscoverSeeds.categories.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, i) {
-              final c = DiscoverSeeds.categories[i];
-              final selected = i == _cat;
-              return GestureDetector(
-                onTap: () => _switchCategory(i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: selected ? AppTheme.accent : AppTheme.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: selected ? AppTheme.accent : AppTheme.divider,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(c.icon,
-                          size: 16,
-                          color: selected
-                              ? Colors.white
-                              : AppTheme.textSub),
-                      const SizedBox(width: 6),
-                      Text(
-                        c.label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.w400,
-                          color:
-                              selected ? Colors.white : AppTheme.textSub,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+        _buildCategoryBar(),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () => _loadBrowse(force: true),
@@ -226,6 +212,26 @@ class _DiscoverPageState extends State<DiscoverPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCategoryBar() {
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        itemCount: DiscoverSeeds.categories.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final c = DiscoverSeeds.categories[i];
+          return _CategoryChip(
+            category: c,
+            selected: i == _cat,
+            onTap: () => _switchCategory(i),
+          );
+        },
+      ),
     );
   }
 
@@ -351,8 +357,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
       GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: bookGridColumns(context),
           mainAxisSpacing: 14,
           crossAxisSpacing: 12,
           childAspectRatio: 0.55,
@@ -429,44 +435,125 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 }
 
+/// 分类标签：遥控器可聚焦，聚焦时描一圈品牌色边
+class _CategoryChip extends StatefulWidget {
+  final DiscoverCategory category;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CategoryChip({
+    required this.category,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  State<_CategoryChip> createState() => _CategoryChipState();
+}
+
+class _CategoryChipState extends State<_CategoryChip> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.category;
+    final selected = widget.selected;
+    return InkWell(
+      onTap: widget.onTap,
+      onFocusChange: (v) {
+        if (mounted && v != _focused) setState(() => _focused = v);
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: FocusRing(
+        focused: _focused,
+        borderRadius: BorderRadius.circular(20),
+        // 已选中的标签底色本身就是品牌色，聚焦改描白边保证可见
+        color: selected ? Colors.white : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.accent : AppTheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? AppTheme.accent : AppTheme.divider,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(c.icon,
+                  size: 16,
+                  color: selected ? Colors.white : AppTheme.textSub),
+              const SizedBox(width: 6),
+              Text(
+                c.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected ? Colors.white : AppTheme.textSub,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 精选主播卡片：圆形头像 + 名字 + 代表作（无网络依赖）
-class _AnchorTile extends StatelessWidget {
+class _AnchorTile extends StatefulWidget {
   final AnchorPick anchor;
   final VoidCallback onTap;
 
   const _AnchorTile({required this.anchor, required this.onTap});
 
   @override
+  State<_AnchorTile> createState() => _AnchorTileState();
+}
+
+class _AnchorTileState extends State<_AnchorTile> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
-    final a = anchor;
+    final a = widget.anchor;
     return InkWell(
-      onTap: onTap,
+      onTap: widget.onTap,
+      onFocusChange: (v) {
+        if (mounted && v != _focused) setState(() => _focused = v);
+      },
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         width: 84,
         child: Column(
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    a.color.withValues(alpha: 0.9),
-                    a.color.withValues(alpha: 0.55),
-                  ],
+            FocusRing(
+              focused: _focused,
+              borderRadius: BorderRadius.circular(32),
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      a.color.withValues(alpha: 0.9),
+                      a.color.withValues(alpha: 0.55),
+                    ],
+                  ),
                 ),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                a.name.characters.first,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                alignment: Alignment.center,
+                child: Text(
+                  a.name.characters.first,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -478,7 +565,7 @@ class _AnchorTile extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.textMain,
+                color: _focused ? AppTheme.accent : AppTheme.textMain,
               ),
             ),
             const SizedBox(height: 2),

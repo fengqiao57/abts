@@ -3,18 +3,22 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_meta.dart';
+import '../core/storage/bookmark_store.dart';
 import '../core/storage/cache_store.dart';
 import '../core/storage/follow_store.dart';
 import '../core/storage/shelf_store.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/theme_controller.dart';
+import '../core/theme/tv_mode.dart';
 import '../player/book_player.dart';
 import '../services/app_update.dart';
 import '../services/auth_store.dart';
 import '../services/browser.dart';
 import '../services/umeng_analytics.dart';
 import '../widgets/book_cover.dart';
+import '../widgets/focus_ring.dart';
 import 'about_page.dart';
+import 'bookmarks_page.dart';
 import 'cache_page.dart';
 import 'favorites_page.dart';
 import 'follow_page.dart';
@@ -36,26 +40,32 @@ class MyPage extends StatelessWidget {
     final follows = context.watch<FollowStore>().length;
     final cache = context.watch<CacheStore>();
     final cacheCount = cache.entries.length;
+    final bookmarkCount = context.watch<BookmarkStore>().all.length;
     final cacheSize = cache.totalSizeText;
     final books = shelf.books;
     final reading = books.where((b) => b.positionMs > 0).toList();
 
+    final wide = TvMode.useWideLayout(context);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: IconButton(
-              tooltip: '系统设置',
-              icon: const Icon(Icons.settings_outlined, size: 22),
-              onPressed: () => _push(context, const SettingsPage()),
+      // 宽屏顶栏交给侧栏，设置入口在下方菜单里已有
+      appBar: wide
+          ? null
+          : AppBar(
+              title: const Text('我的'),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: IconButton(
+                    tooltip: '系统设置',
+                    icon: const Icon(Icons.settings_outlined, size: 22),
+                    onPressed: () => _push(context, const SettingsPage()),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: 32),
+        padding: EdgeInsets.only(top: wide ? 8 : 0, bottom: 32),
         children: [
           _buildHeader(context, shelf, auth),
           const SizedBox(height: 4),
@@ -79,6 +89,16 @@ class MyPage extends StatelessWidget {
                 ? '去发现找一本想听的书'
                 : '共 ${reading.length} 本在听',
             onTap: () => _push(context, const RecentPage()),
+          ),
+          _menuTile(
+            context,
+            icon: Icons.bookmarks_rounded,
+            color: AppTheme.toneLilac,
+            title: '播放书签',
+            subtitle: bookmarkCount == 0
+                ? '听到关键处标记，随时跳回'
+                : '$bookmarkCount 个 · 快速跳回听到的位置',
+            onTap: () => _push(context, const BookmarksPage()),
           ),
           _menuTile(
             context,
@@ -235,31 +255,36 @@ class MyPage extends StatelessWidget {
       int cacheCount, int follows, BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppTheme.divider),
-        ),
-        child: Row(
-          children: [
-            // 统计项可点击直达对应页面
-            _statCell('${books.length}', '书架',
-                Icons.collections_bookmark_outlined,
-                onTap: () => _push(context, const FavoritesPage())),
-            _divider(),
-            _statCell(
-                '${reading.length}', '在听', Icons.headset_rounded,
-                onTap: () => _push(context, const RecentPage())),
-            _divider(),
-            _statCell('$cacheCount', '已缓存',
-                Icons.download_for_offline_outlined,
-                onTap: () => _push(context, const CachePage())),
-            _divider(),
-            _statCell('$follows', '关注', Icons.person_rounded,
-                onTap: () => _push(context, const FollowPage())),
-          ],
+      // 用 Material 承载卡片底色：统计格子内 InkWell 的聚焦高亮
+      // 才能画在卡片之上（普通 Container 白底会盖住 ink 层）
+      child: Material(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.divider),
+          ),
+          child: Row(
+            children: [
+              // 统计项可点击直达对应页面
+              _statCell('${books.length}', '书架',
+                  Icons.collections_bookmark_outlined,
+                  onTap: () => _push(context, const FavoritesPage())),
+              _divider(),
+              _statCell(
+                  '${reading.length}', '在听', Icons.headset_rounded,
+                  onTap: () => _push(context, const RecentPage())),
+              _divider(),
+              _statCell('$cacheCount', '已缓存',
+                  Icons.download_for_offline_outlined,
+                  onTap: () => _push(context, const CachePage())),
+              _divider(),
+              _statCell('$follows', '关注', Icons.person_rounded,
+                  onTap: () => _push(context, const FollowPage())),
+            ],
+          ),
         ),
       ),
     );
@@ -333,66 +358,7 @@ class MyPage extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: reading.length,
             separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (context, i) {
-              final sb = reading[i];
-              return InkWell(
-                onTap: () async {
-                  final player = context.read<BookPlayer>();
-                  await player.resumeShelf(sb);
-                  if (!context.mounted) return;
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const PlayerPage()),
-                  );
-                },
-                child: SizedBox(
-                  width: 110,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Stack(
-                        children: [
-                          BookCover(url: sb.book.pic, width: 110, height: 76),
-                          Positioned(
-                            bottom: 4,
-                            right: 4,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppTheme.accent,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${(sb.percent * 100).round()}%',
-                                style: const TextStyle(
-                                    fontSize: 10, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        sb.book.cleanTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textMain,
-                        ),
-                      ),
-                      Text(
-                        '第 ${sb.lastChapterIndex + 1} 章 · ${sb.positionText}',
-                        maxLines: 1,
-                        style:
-                            TextStyle(fontSize: 11, color: AppTheme.textSub),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+            itemBuilder: (context, i) => _ContinueCard(sb: reading[i]),
           ),
         ),
       ],
@@ -552,6 +518,88 @@ style: TextStyle(
     messenger.showSnackBar(
       SnackBar(content: Text('下载链接已复制\n$url'),
           duration: const Duration(seconds: 3)),
+    );
+  }
+}
+
+/// 「继续收听」横向卡片：遥控器聚焦时描边（封面不透明，需自绘焦点环）
+class _ContinueCard extends StatefulWidget {
+  final ShelfBook sb;
+  const _ContinueCard({required this.sb});
+
+  @override
+  State<_ContinueCard> createState() => _ContinueCardState();
+}
+
+class _ContinueCardState extends State<_ContinueCard> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final sb = widget.sb;
+    return InkWell(
+      onTap: () async {
+        final player = context.read<BookPlayer>();
+        await player.resumeShelf(sb);
+        if (!context.mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const PlayerPage()),
+        );
+      },
+      onFocusChange: (v) {
+        if (mounted && v != _focused) setState(() => _focused = v);
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: FocusRing(
+        focused: _focused,
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: 110,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  BookCover(url: sb.book.pic, width: 110, height: 76),
+                  Positioned(
+                    bottom: 4,
+                    right: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${(sb.percent * 100).round()}%',
+                        style: const TextStyle(
+                            fontSize: 10, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                sb.book.cleanTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textMain,
+                ),
+              ),
+              Text(
+                '第 ${sb.lastChapterIndex + 1} 章 · ${sb.positionText}',
+                maxLines: 1,
+                style: TextStyle(fontSize: 11, color: AppTheme.textSub),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

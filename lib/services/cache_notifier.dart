@@ -20,13 +20,18 @@ class CacheNotifier {
     var lastPct = -1;
 
     store.onProgressChanged = () {
-      final tasks = store.tasks;
       final pending = store.pendingCount;
       if (pending <= 0) {
         _cancel();
         lastPct = -1;
         return;
       }
+      if (store.paused) {
+        lastPct = -1;
+        _update('缓存已暂停', '剩 $pending 集，打开 App 可继续', -1);
+        return;
+      }
+      final tasks = store.pendingTasks;
       final cur = tasks.isEmpty ? null : tasks.first;
       final pct = (store.queueProgress * 100).round();
       // 进度变化不足 1% 就不重复刷新通知
@@ -46,6 +51,12 @@ class CacheNotifier {
     };
 
     store.onQueueFinished = () {
+      // 暂停导致的队列中断：保留通知，标明已暂停
+      if (store.paused && store.pendingCount > 0) {
+        lastPct = -1;
+        _update('缓存已暂停', '剩 ${store.pendingCount} 集，打开 App 可继续', -1);
+        return;
+      }
       _cancel();
       lastPct = -1;
     };

@@ -13,6 +13,9 @@ analyzer:
   # tool/ 下是本地调试脚本（会 print 调试输出），不参与 lint
   exclude:
     - tool/**
+    - build/**
+    - android/**
+    - windows/**
 
 linter:
   # The lint rules applied to this project can be customized in the

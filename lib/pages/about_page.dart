@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../core/app_meta.dart';
 import '../core/theme/app_theme.dart';
 import '../services/browser.dart';
+import '../widgets/tv_page_scaffold.dart';
 
 /// 关于我们：应用介绍 + 开源/官网快捷入口 + 免责声明
 class AboutPage extends StatelessWidget {
@@ -11,8 +12,8 @@ class AboutPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('关于我们')),
+    return TvPageScaffold(
+      title: const Text('关于我们'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
@@ -141,12 +142,16 @@ class AboutPage extends StatelessWidget {
 
   /// 快捷跳转：开源仓库 / 官网 / 问题反馈 / 协议
   Widget _buildLinks(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.divider),
-      ),
+    // 用 Material 承载卡片底色：卡内各链接行的聚焦高亮/水波才能
+    // 画在卡片之上（普通 Container 白底会盖住 ink 层）
+    return Material(
+      color: AppTheme.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.divider),
+        ),
       child: Column(
         children: [
           _linkTile(
@@ -181,6 +186,7 @@ class AboutPage extends StatelessWidget {
             url: AppMeta.licenseUrl,
           ),
         ],
+        ),
       ),
     );
   }

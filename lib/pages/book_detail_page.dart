@@ -13,6 +13,7 @@ import '../services/bili_api.dart';
 import '../services/umeng_analytics.dart';
 import '../utils/format.dart';
 import '../widgets/book_cover.dart';
+import '../widgets/tv_page_scaffold.dart';
 import 'cache_sheet.dart';
 import 'player_page.dart';
 import 'up_home_page.dart';
@@ -65,8 +66,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('书籍详情')),
+    return TvPageScaffold(
+      title: const Text('书籍详情'),
       body: _loading
           ?  Center(
               child: CircularProgressIndicator(color: AppTheme.accent),
@@ -114,27 +115,28 @@ class _BookDetailPageState extends State<BookDetailPage> {
         : (hasProgress ? (shelfBook?.lastChapterIndex ?? -1) : -1);
     final doneCount = shelf.doneCount(book.bvid);
 
-    return Column(
+    Future<void> refresh() async {
+      await _load();
+      if (!mounted) return;
+      // 刷新书架元数据
+      final fresh = _book;
+      if (fresh != null && onShelf) {
+        await context
+            .read<ShelfStore>()
+            .add(fresh, withProgress: shelf.byBvid(fresh.bvid));
+      }
+    }
+
+    final headerSection = Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async {
-              await _load();
-              if (!mounted) return;
-              // 刷新书架元数据
-              final fresh = _book;
-              if (fresh != null && onShelf) {
-                await context
-                    .read<ShelfStore>()
-                    .add(fresh, withProgress: shelf.byBvid(fresh.bvid));
-              }
-            },
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 24),
-              children: [
-                _buildHeader(book),
-                const Divider(),
-                Padding(
+        _buildHeader(book),
+        const Divider(),
+      ],
+    );
+
+    // 目录区表头（正序/倒序、批量缓存、从头播放）
+    final sectionHeader = Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
                   child: Row(
                     children: [
@@ -192,8 +194,9 @@ Text(
                       ),
                     ],
                   ),
-                ),
-                ..._orderedIndexes(chapters.length).map((i) {
+                );
+
+    final chapterTiles = _orderedIndexes(chapters.length).map((i) {
                   // 有逐章记录时以记录为准，否则退回序号推导
                   final listened = hasDoneRecords
                       ? shelf.isChapterDone(book.bvid, chapters[i].cid)
@@ -209,15 +212,79 @@ Text(
                     onTap: () => _playFrom(i),
                     onCache: () => _cacheOne(chapters[i]),
                   );
-                }),
-                const SizedBox(height: 16),
-              ],
+                }).toList();
+
+    final bottomBar = _buildBottomBar(
+        player, book, onShelf, resumeIndex, resumeMs, hasProgress, chapters);
+
+    return LayoutBuilder(
+      builder: (context, cons) {
+        final landscape =
+            cons.maxWidth >= 700 && cons.maxWidth > cons.maxHeight;
+
+        if (!landscape) {
+          return Column(
+            children: [
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: refresh,
+                  child: ListView(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    children: [
+                      headerSection,
+                      sectionHeader,
+                      ...chapterTiles,
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+              bottomBar,
+            ],
+          );
+        }
+
+        // 横屏：左侧书籍信息栏 + 右侧章节目录，底部操作条居中收窄
+        return Column(
+          children: [
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 380,
+                    child: ListView(
+                      padding: const EdgeInsets.only(bottom: 24),
+                      children: [headerSection],
+                    ),
+                  ),
+                  VerticalDivider(
+                      width: 1, thickness: 0.6, color: AppTheme.divider),
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: refresh,
+                      child: ListView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        children: [
+                          sectionHeader,
+                          ...chapterTiles,
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
-        _buildBottomBar(
-            player, book, onShelf, resumeIndex, resumeMs, hasProgress, chapters),
-      ],
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: bottomBar,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

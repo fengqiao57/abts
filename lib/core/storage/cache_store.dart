@@ -187,6 +187,15 @@ class CacheTask {
   bool failed;
   String? error;
 
+  /// 被暂停/取消中断：既不算成功也不算失败（暂停会放回队列，恢复后重下）
+  bool cancelled = false;
+
+  /// 中断原因是否为「暂停」（false 表示用户主动取消）
+  bool pausedByUser = false;
+
+  /// 本次下载的取消令牌（暂停 / 取消 / 停滞看门狗共用）
+  CancelToken? token;
+
   CacheTask({
     required this.bvid,
     required this.cid,
@@ -277,6 +286,14 @@ class CacheStore extends ChangeNotifier {
   static const _key = 'abts_cache_index';
   static const _pendingKey = 'abts_cache_pending';
   static const _eventsKey = 'abts_cache_events';
+  static const _locationKey = 'abts_cache_location';
+
+  /// 缓存位置偏好：'internal'（应用内部存储）/ 'external'（外部存储 / SD 卡）
+  String _location = 'internal';
+  String get location => _location;
+
+  /// 外部存储不可用时是否已退回内部目录（此时必须跳过磁盘对账，防止误删索引）
+  bool _usingFallbackDir = false;
 
   /// 最近的缓存事件（排查用，跨重启保留）
   final List<CacheEvent> _events = [];
@@ -350,6 +367,29 @@ class CacheStore extends ChangeNotifier {
   /// 正在下载的任务
   List<CacheTask> get tasks => List.unmodifiable(_tasks.values);
 
+  /// 待下载的任务（按下载顺序：正在下载的排最前，其余按排队顺序）
+  List<CacheTask> get pendingTasks {
+    final out = <CacheTask>[];
+    final seen = <String>{};
+    final a = _active;
+    if (a != null) {
+      final t = _tasks['${a.bvid}-${a.cid}'];
+      if (t != null && !t.done && !t.failed) {
+        out.add(t);
+        seen.add(t.key);
+      }
+    }
+    for (final q in _queue) {
+      final t = _tasks['${q.bvid}-${q.cid}'];
+      if (t != null && !t.done && !t.failed && seen.add(t.key)) out.add(t);
+    }
+    return out;
+  }
+
+  /// 正在下载的任务 key（UI 用来区分「下载中」和「排队中」）
+  String? get activeKey =>
+      _active == null ? null : '${_active!.bvid}-${_active!.cid}';
+
   bool get busy => _tasks.values.any((t) => !t.done && !t.failed);
 
   // ---------- 后台缓存队列 ----------
@@ -358,6 +398,13 @@ class CacheStore extends ChangeNotifier {
   /// 因此离开弹窗、切页面、回到桌面都不会中断）
   final List<_QueueItem> _queue = [];
   bool _draining = false;
+
+  /// 队列是否已暂停（暂停后不再开始新任务；正在下载的会被中断并放回队首）
+  bool _paused = false;
+  bool get paused => _paused;
+
+  /// 当前队列下载的取消令牌（暂停 / 取消队列任务用）
+  CancelToken? _cancelToken;
 
   /// 由入队方（播放/详情页）注入：解析下载地址与下载请求头
   Future<String?> Function(String bvid, int cid)? _resolveUrl;
@@ -482,11 +529,74 @@ class CacheStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 取消排队中（尚未开始）的任务
-  void cancelQueued(String bvid, int cid) {
-    _queue.removeWhere((e) => e.bvid == bvid && e.cid == cid);
-    if (_tasks.remove('$bvid-$cid') != null) _batchTotal--;
+  /// 暂停队列：不再开始新任务；正在下载/解析的这一集会被中断并放回队首，
+  /// 恢复后重新下载（不算失败）。
+  void pauseQueue() {
+    if (_paused || pendingCount == 0) return;
+    _paused = true;
+    if (_active != null) _cancelToken?.cancel('pause');
+    logEvent('缓存队列已暂停（剩 $pendingCount 集）');
     notifyListeners();
+    unawaited(_persistPending());
+    _onQueueProgress();
+  }
+
+  /// 继续先前暂停的队列
+  void resumeQueue() {
+    if (!_paused) return;
+    _paused = false;
+    logEvent('缓存队列继续（剩 ${_queue.length} 集）');
+    notifyListeners();
+    _onQueueProgress();
+    unawaited(_drain());
+  }
+
+  /// 取消单个任务：排队中的直接移除；正在下载的会被中断（不算失败）
+  void cancelTask(String bvid, int cid) {
+    final key = '$bvid-$cid';
+    final t = _tasks[key];
+    if (t == null || t.done || t.failed) return;
+    _queue.removeWhere((e) => e.bvid == bvid && e.cid == cid);
+    if (activeKey == key) {
+      // 正在下载/解析地址：交给 _drain 收尾（避免 _batchTotal 重复扣减）
+      t
+        ..cancelled = true
+        ..pausedByUser = false;
+      t.token?.cancel('cancel');
+    } else {
+      _tasks.remove(key);
+      if (_batchTotal > 0) _batchTotal--;
+    }
+    logEvent('已取消缓存任务 $key');
+    notifyListeners();
+    unawaited(_persistPending());
+    _onQueueProgress();
+  }
+
+  /// 取消全部未完成任务（排队中的全部丢弃；正在下载的中断）
+  void cancelAll() {
+    final n = _queue.length;
+    for (final q in _queue) {
+      _tasks.remove('${q.bvid}-${q.cid}');
+    }
+    _queue.clear();
+    final active = _active;
+    if (active != null) {
+      _tasks['${active.bvid}-${active.cid}']
+        ?..cancelled = true
+        ..pausedByUser = false;
+      _cancelToken?.cancel('cancel');
+    }
+    if (_batchTotal >= n) {
+      _batchTotal -= n;
+    } else {
+      _batchTotal = 0;
+    }
+    _paused = false;
+    logEvent('已取消全部缓存任务（$n 集排队）');
+    notifyListeners();
+    unawaited(_persistPending());
+    _onQueueProgress();
   }
 
   /// 清空任务记录（全部完成后调用，避免列表里堆积）
@@ -501,30 +611,55 @@ class CacheStore extends ChangeNotifier {
     try {
       var first = true;
       while (_queue.isNotEmpty) {
+        if (_paused) break;
         if (!first) {
           // 两集之间留出间隔，降低连续请求 playurl 触发风控的概率
           await Future<void>.delayed(_itemGap);
+          if (_paused) break;
         }
         first = false;
         final item = _queue.removeAt(0);
-        final task = _tasks['${item.bvid}-${item.cid}'];
+        final key = '${item.bvid}-${item.cid}';
+        final task = _tasks[key];
         if (task == null) continue; // 已被取消
         _active = item;
         task
           ..done = false
           ..failed = false
           ..progress = 0
-          ..error = null;
+          ..error = null
+          ..cancelled = false
+          ..pausedByUser = false;
         notifyListeners();
 
         final url = await _resolveWithRetry(item);
+
+        // 解析地址期间被取消 / 暂停：不再发起下载
+        if (task.cancelled || _paused) {
+          if (task.cancelled) {
+            // 用户取消：直接丢弃
+            _tasks.remove(key);
+            if (_batchTotal > 0) _batchTotal--;
+          } else {
+            // 暂停：放回队首，恢复后重下
+            _queue.insert(0, item);
+          }
+          _active = null;
+          notifyListeners();
+          await _persistPending();
+          _onQueueProgress();
+          if (_paused) break;
+          continue;
+        }
+
         if (url == null) {
           debugPrint('[CacheStore] 获取下载地址失败 ${item.bvid}/${item.cid}');
           _recordFailure(
             item,
             '网络繁忙，未能获取下载地址，请重试',
           );
-          _tasks.remove('${item.bvid}-${item.cid}');
+          _tasks.remove(key);
+          _active = null;
           notifyListeners();
           await _persistPending();
           _onQueueProgress();
@@ -553,19 +688,31 @@ class CacheStore extends ChangeNotifier {
             _onQueueProgress();
           },
         );
-        if (!ok) {
+        if (!ok && task.cancelled) {
+          // 被暂停/取消中断：不算失败
+          if (task.pausedByUser) {
+            _queue.insert(0, item);
+            task
+              ..cancelled = false
+              ..progress = 0;
+          } else {
+            _tasks.remove(key);
+            if (_batchTotal > 0) _batchTotal--;
+          }
+        } else if (!ok) {
           debugPrint('[CacheStore] 下载未完成 ${item.bvid}/${item.cid}: '
               '${task.error}');
           _recordFailure(item, task.error ?? '缓存失败，请重试');
+          _tasks.remove(key);
         } else {
           _batchDone++;
+          _tasks.remove(key);
         }
-        // 完成/失败都清掉任务，避免进度卡片残留
-        _tasks.remove('${item.bvid}-${item.cid}');
         _active = null;
         notifyListeners();
         await _persistPending();
         _onQueueProgress();
+        if (_paused) break;
       }
     } finally {
       _draining = false;
@@ -630,18 +777,159 @@ class CacheStore extends ChangeNotifier {
   Future<Directory> audioDir() async {
     if (_dir != null) return _dir!;
     Directory d;
-    try {
-      final base = await getApplicationSupportDirectory();
-      d = Directory('${base.path}/audio_cache');
-    } catch (_) {
-      // 内部目录拿不到时退回外部私有目录
-      final base =
-          await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
-      d = Directory('${base.path}/audio_cache');
+    if (_location == 'external') {
+      final ext = await _externalBase();
+      if (ext != null) {
+        _usingFallbackDir = false;
+        d = Directory('${ext.path}/audio_cache');
+      } else {
+        // 外部存储不可用（SD 卡未挂载/被拔出）：先退回内部目录保证可用，
+        // 此时绝不能做磁盘对账，否则索引会被误判为「文件丢失」
+        _usingFallbackDir = true;
+        final base = await getApplicationSupportDirectory();
+        d = Directory('${base.path}/audio_cache');
+      }
+    } else {
+      try {
+        final base = await getApplicationSupportDirectory();
+        d = Directory('${base.path}/audio_cache');
+      } catch (_) {
+        // 内部目录拿不到时退回外部私有目录
+        final base = await getExternalStorageDirectory() ??
+            await getApplicationDocumentsDirectory();
+        d = Directory('${base.path}/audio_cache');
+      }
     }
     if (!await d.exists()) await d.create(recursive: true);
     _dir = d;
     return d;
+  }
+
+  /// 外部存储基目录：优先 SD 卡等非主卷，没有就退回主外部目录；都不行返回 null
+  Future<Directory?> _externalBase() async {
+    try {
+      final dirs = await getExternalStorageDirectories();
+      if (dirs == null || dirs.isEmpty) {
+        return await getExternalStorageDirectory();
+      }
+      // 主外部目录一般是 /storage/emulated/...（与内部共享分区），
+      // 有真正的 SD 卡时优先用它
+      for (final d in dirs) {
+        if (!d.path.contains('/emulated/')) return d;
+      }
+      return dirs.first;
+    } catch (e) {
+      debugPrint('[CacheStore] 获取外部存储失败: $e');
+      return null;
+    }
+  }
+
+  /// 是否存在可用的外部存储（设置页探测用）
+  Future<bool> externalAvailable() async => (await _externalBase()) != null;
+
+  /// 切换缓存位置：'internal' / 'external'。
+  /// 成功返回 null；失败返回给用户看的错误原因。
+  Future<String?> setLocation(String v) async {
+    final target = v == 'external' ? 'external' : 'internal';
+    if (target == _location) return null;
+    if (pendingCount > 0) {
+      return '有缓存任务进行中，请先等待完成或取消全部任务';
+    }
+    if (target == 'external' && !await externalAvailable()) {
+      return '未检测到可用的外部存储（SD 卡未挂载）';
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final oldLocation = _location;
+    // 先把当前位置的目录定下来（含 fallback 情况）
+    final from = await audioDir();
+    final names = <String>[];
+    try {
+      for (final f in from.listSync()) {
+        if (f is! File) continue;
+        final n = _basename(f.path);
+        if (n.endsWith('.part')) {
+          // 半成品下载残片直接清掉，不值得迁移
+          try {
+            f.deleteSync();
+          } catch (_) {}
+          continue;
+        }
+        names.add(n);
+      }
+    } catch (e) {
+      debugPrint('[CacheStore] 读取旧缓存目录失败: $e');
+    }
+
+    // 落到新位置
+    _location = target;
+    _dir = null;
+    _usingFallbackDir = false;
+    final to = await audioDir();
+
+    // 逐个搬迁：复制 → 校验大小 → 删源文件
+    final report = await _moveFiles(names, from, to);
+    if (report.failed.isNotEmpty) {
+      // 有文件没搬成功：把已搬的搬回去，再退回原位置，绝不让用户丢缓存
+      final back = await _moveFiles(report.moved, to, from);
+      _location = oldLocation;
+      _dir = null;
+      _usingFallbackDir = false;
+      await prefs.setString(_locationKey, _location);
+      logEvent('缓存位置切换失败：${report.failed.length} 个文件未迁移成功，已还原'
+          '${back.failed.isNotEmpty ? '（${back.failed.length} 个还原失败）' : ''}');
+      notifyListeners();
+      return '迁移失败（${report.failed.length} 个文件），已保留在原来的位置';
+    }
+    // 全部搬完才删除旧目录
+    if (report.moved.isNotEmpty) {
+      try {
+        if (from.listSync().isEmpty) await from.delete(recursive: true);
+      } catch (_) {}
+    }
+    await prefs.setString(_locationKey, _location);
+    logEvent('缓存位置已切换为 ${_location == 'external' ? '外部存储' : '内部存储'}'
+        '（迁移 ${report.moved.length} 个文件）');
+    notifyListeners();
+    return null;
+  }
+
+  /// 把一组文件从 [from] 复制到 [to]（校验大小一致后删源）；返回成功/失败名单
+  Future<({List<String> moved, List<String> failed})> _moveFiles(
+      List<String> names, Directory from, Directory to) async {
+    final moved = <String>[];
+    final failed = <String>[];
+    for (final name in names) {
+      final src = File('${from.path}/$name');
+      final dst = File('${to.path}/$name');
+      try {
+        if (!await src.exists() || await src.length() <= 0) {
+          failed.add(name);
+          continue;
+        }
+        if (await dst.exists() && await dst.length() == await src.length()) {
+          // 目标已有同样大小的文件，直接删源
+          await src.delete();
+          moved.add(name);
+          continue;
+        }
+        final srcSize = await src.length();
+        await src.copy(dst.path);
+        final dstSize = await dst.length();
+        if (dstSize != srcSize) {
+          try {
+            await dst.delete();
+          } catch (_) {}
+          failed.add(name);
+          continue;
+        }
+        await src.delete();
+        moved.add(name);
+      } catch (e) {
+        debugPrint('[CacheStore] 迁移文件失败 $name: $e');
+        failed.add(name);
+      }
+    }
+    return (moved: moved, failed: failed);
   }
 
   Future<Directory> _root() => audioDir();
@@ -652,11 +940,18 @@ class CacheStore extends ChangeNotifier {
     return File('${d.path}/${e.fileName}');
   }
 
-  /// 剩余可用空间（字节）；拿不到时返回 -1
+  /// 剩余可用空间（字节）；拿不到时返回 -1。
+  /// 按当前缓存所在分区计算（切换外部存储后检测的也是对应分区）
   Future<int> freeSpace() async {
     try {
-      final v = await const MethodChannel('abts/storage')
-          .invokeMethod<int>('freeBytes');
+      String? path;
+      try {
+        path = (await audioDir()).path;
+      } catch (_) {}
+      final v = await const MethodChannel('abts/storage').invokeMethod<int>(
+        'freeBytes',
+        path == null ? null : {'path': path},
+      );
       return v ?? -1;
     } catch (_) {
       return -1;
@@ -666,6 +961,10 @@ class CacheStore extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
+    final loc = prefs.getString(_locationKey);
+    if (loc == 'external' || loc == 'internal') _location = loc!;
+    _usingFallbackDir = false;
+    _dir = null;
     await _loadEvents();
     if (raw != null) {
       try {
@@ -777,10 +1076,17 @@ class CacheStore extends ChangeNotifier {
   /// 同时尝试把旧版本放在外部目录的缓存迁移到新的内部目录。
   Future<void> _reconcile() async {
     try {
-      // ① 旧版迁移：从外部目录搬到内部目录，尽量保住用户已有的缓存
+      final dir = await audioDir();
+      if (_usingFallbackDir) {
+        // 用户选了外部存储但当前不可用：文件其实都在 SD 卡上，
+        // 此时对账会把所有记录误判为「文件丢失」删光，必须跳过
+        logEvent('外部存储暂不可用，跳过启动对账（缓存记录已保留）');
+        return;
+      }
+
+      // ① 旧版迁移：从外部目录搬到当前目录，尽量保住用户已有的缓存
       await _migrateFromExternal();
 
-      final dir = await audioDir();
       // ② 索引 → 磁盘：文件没了就摘掉记录
       final alive = <CacheEntry>[];
       for (final e in _entries) {
@@ -846,6 +1152,9 @@ class CacheStore extends ChangeNotifier {
       if (files.isEmpty) return;
 
       final newDir = await audioDir();
+      // 用户已把缓存位置切到外部存储时，目标目录可能就是这里，
+      // 「迁移」会把自己搬到删自己的地步，直接跳过
+      if (oldDir.path == newDir.path) return;
       var moved = 0;
       final failed = <String>[];
       for (final f in files) {
@@ -1020,6 +1329,28 @@ class CacheStore extends ChangeNotifier {
       '$bvid-$cid',
       () => CacheTask(bvid: bvid, cid: cid, title: chapterTitle),
     );
+    // 每次下载都用新的取消令牌，并清掉上一次可能残留的中断标记
+    final token = CancelToken();
+    // 只有队列里正在下载的这一集才认领全局令牌（避免误伤单个下载）
+    final ownsGlobalToken = _active != null &&
+        _active!.bvid == bvid &&
+        _active!.cid == cid;
+    if (ownsGlobalToken) _cancelToken = token;
+    task
+      ..cancelled = false
+      ..pausedByUser = false
+      ..failed = false
+      ..error = null
+      ..token = token;
+    // 停滞看门狗：120 秒收不到任何数据就中断这一集，避免「进度卡死」
+    var lastDataAt = DateTime.now();
+    final watchdog = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (DateTime.now().difference(lastDataAt) >
+          const Duration(seconds: 120)) {
+        debugPrint('[CacheStore] 下载停滞，中断 $bvid/$cid');
+        token.cancel('stall');
+      }
+    });
     notifyListeners();
 
     File? tmp;
@@ -1037,12 +1368,14 @@ class CacheStore extends ChangeNotifier {
       await _dio.download(
         url,
         tmp.path,
+        cancelToken: token,
         options: Options(
           headers: headers,
           followRedirects: true,
           receiveTimeout: const Duration(minutes: 10),
         ),
         onReceiveProgress: (r, t) {
+          lastDataAt = DateTime.now();
           if (t > 0) {
             task.progress = (r / t).clamp(0.0, 1.0);
             onProgress?.call(task.progress);
@@ -1085,11 +1418,32 @@ class CacheStore extends ChangeNotifier {
       try {
         if (tmp != null && await tmp.exists()) await tmp.delete();
       } catch (_) {}
-      task
-        ..failed = true
-        ..error = _describeError(e);
+      if (e is DioException && CancelToken.isCancel(e)) {
+        // 暂停 / 取消 / 停滞看门狗触发的中断，不算「下载失败」，
+        // 具体怎么处理（放回队列还是丢弃）由 _drain 决定
+        final reason = '${e.error ?? ''}';
+        if (reason == 'stall') {
+          task
+            ..failed = true
+            ..error = '下载停滞（长时间无数据），请重试';
+        } else {
+          task
+            ..cancelled = true
+            ..pausedByUser = reason == 'pause';
+        }
+      } else {
+        task
+          ..failed = true
+          ..error = _describeError(e);
+      }
       notifyListeners();
       return false;
+    } finally {
+      watchdog.cancel();
+      task.token = null;
+      if (ownsGlobalToken && identical(_cancelToken, token)) {
+        _cancelToken = null;
+      }
     }
   }
 

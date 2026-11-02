@@ -10,6 +10,7 @@ import '../core/theme/app_theme.dart';
 import '../services/auth_store.dart';
 import '../services/bili_api.dart';
 import '../services/gallery_service.dart';
+import '../widgets/tv_page_scaffold.dart';
 
 /// B 站二维码登录页：生成二维码 → 前台轮询 → 成功后写入 Cookie 并持久化
 class LoginPage extends StatefulWidget {
@@ -150,8 +151,8 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('账号')),
+    return TvPageScaffold(
+      title: const Text('账号'),
       body: _buildLogin(),
     );
   }

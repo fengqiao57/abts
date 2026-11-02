@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme/app_theme.dart';
 import '../core/theme/theme_controller.dart';
+import '../widgets/tv_page_scaffold.dart';
 
 /// 外观模式（独立页面）：跟随系统 / 浅色 / 深色
 class ThemePage extends StatelessWidget {
@@ -22,8 +23,8 @@ class ThemePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tc = ThemeController.instance;
-    return Scaffold(
-      appBar: AppBar(title: const Text('外观模式')),
+    return TvPageScaffold(
+      title: const Text('外观模式'),
       body: AnimatedBuilder(
         animation: tc,
         builder: (context, _) {

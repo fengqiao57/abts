@@ -4,15 +4,19 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.app.NotificationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
 import android.os.StatFs
 import android.provider.Settings
+import android.view.View
+import android.view.ViewGroup
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -29,6 +33,29 @@ class MainActivity : AudioServiceActivity() {
     private var focusCallback: EventChannel.EventSink? = null
     private var focusRequest: AudioFocusRequest? = null
     private var cacheNotifyManager: NotificationManager? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        disableSystemFocusHighlight(window.decorView)
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        // FlutterView 在 onCreate 后挂载，这里再扫一遍，确保系统焦点框被关掉
+        disableSystemFocusHighlight(window.decorView)
+    }
+
+    /// Flutter 自己绘制焦点态；关掉 Android 给 FlutterView 套的默认焦点框，
+    /// 否则电视上用遥控器操作时整个画面四周会出现一圈系统配色的边框。
+    private fun disableSystemFocusHighlight(view: View) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        view.defaultFocusHighlightEnabled = false
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                disableSystemFocusHighlight(view.getChildAt(i))
+            }
+        }
+    }
 
     /// 拔耳机 / 蓝牙断开：系统广播 AUDIO_BECOMING_NOISY，通知 Dart 侧暂停
     private val noisyReceiver = object : BroadcastReceiver() {
@@ -177,7 +204,14 @@ class MainActivity : AudioServiceActivity() {
             when (call.method) {
                 "freeBytes" -> {
                     try {
-                        val stat = StatFs(filesDir.absolutePath)
+                        // 传入路径时按该分区算（缓存切到 SD 卡后要检测对应分区）；
+                        // 不传就按应用内部存储算
+                        val path = call.argument<String>("path")
+                        val stat = if (path.isNullOrBlank()) {
+                            StatFs(filesDir.absolutePath)
+                        } else {
+                            StatFs(path)
+                        }
                         result.success(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
                             stat.availableBytes
                         } else {
@@ -186,6 +220,33 @@ class MainActivity : AudioServiceActivity() {
                         })
                     } catch (e: Exception) {
                         result.success(-1L)
+                    }
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+
+        // 设备形态（电视端判定：leanback 特性且无触摸屏）
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "abts/device",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isTv" -> {
+                    try {
+                        val pm = packageManager
+                        val leanback =
+                            pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+                                pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK_ONLY)
+                        val touch =
+                            pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+                        // 部分盒子未声明 leanback 特性，但用方向键导航且无触摸屏，同样按 TV 对待
+                        val dpad = resources.configuration.navigation ==
+                            android.content.res.Configuration.NAVIGATION_DPAD
+                        result.success((leanback && !touch) || (!touch && dpad))
+                    } catch (e: Exception) {
+                        result.success(false)
                     }
                 }
 

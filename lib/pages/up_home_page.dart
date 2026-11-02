@@ -10,6 +10,7 @@ import '../services/bili_api.dart';
 import '../services/umeng_analytics.dart';
 import '../utils/format.dart';
 import '../widgets/book_cover.dart';
+import '../widgets/tv_page_scaffold.dart';
 import 'book_detail_page.dart';
 import 'search_page.dart';
 
@@ -65,7 +66,7 @@ class _UpHomePageState extends State<UpHomePage> {
           page: 1, pageSize: _pageSize);
       if (!mounted) return;
       setState(() {
-        _books = res.books;
+        _books = _sortByPubdate(res.books);
         _loading = false;
         // 是否还有更多由接口给出，不能按返回条数猜
         _noMore = !res.hasMore;
@@ -91,10 +92,10 @@ class _UpHomePageState extends State<UpHomePage> {
       setState(() {
         _page = next;
         final seen = _books.map((b) => b.bvid).toSet();
-        _books = [
+        _books = _sortByPubdate([
           ..._books,
           ...res.books.where((b) => seen.add(b.bvid)),
-        ];
+        ]);
         _loadingMore = false;
         if (res.books.isEmpty || !res.hasMore) _noMore = true;
       });
@@ -102,6 +103,28 @@ class _UpHomePageState extends State<UpHomePage> {
       if (!mounted) return;
       setState(() => _loadingMore = false);
     }
+  }
+
+  /// 按发布时间倒序（新的在前）；没有时间的条目排在最后、保持原相对顺序
+  static List<Book> _sortByPubdate(List<Book> list) {
+    if (!list.any((b) => b.pubdate > 0)) return list;
+    final sorted = [...list];
+    // List.sort 不稳定，用原始下标兜底保持稳定
+    final order = <String, int>{
+      for (var i = 0; i < list.length; i++) list[i].bvid: i,
+    };
+    sorted.sort((a, b) {
+      if (a.pubdate > 0 && b.pubdate > 0) {
+        final c = b.pubdate.compareTo(a.pubdate);
+        if (c != 0) return c;
+      } else if (a.pubdate > 0) {
+        return -1;
+      } else if (b.pubdate > 0) {
+        return 1;
+      }
+      return (order[a.bvid] ?? 0).compareTo(order[b.bvid] ?? 0);
+    });
+    return sorted;
   }
 
   Future<void> _toggleFollow() async {
@@ -122,28 +145,26 @@ class _UpHomePageState extends State<UpHomePage> {
     final following =
         context.watch<FollowStore>().isFollowing(widget.up.mid);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.up.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 16),
-        ),
-        actions: [
-          IconButton(
-            tooltip: following ? '取消关注' : '关注',
-            onPressed: _toggleFollow,
-            icon: Icon(
-              following
-                  ? Icons.notifications_active_rounded
-                  : Icons.notifications_none_rounded,
-              size: 20,
-              color: following ? AppTheme.accent : AppTheme.textSub,
-            ),
-          ),
-        ],
+    return TvPageScaffold(
+      title: Text(
+        widget.up.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 16),
       ),
+      actions: [
+        IconButton(
+          tooltip: following ? '取消关注' : '关注',
+          onPressed: _toggleFollow,
+          icon: Icon(
+            following
+                ? Icons.notifications_active_rounded
+                : Icons.notifications_none_rounded,
+            size: 20,
+            color: following ? AppTheme.accent : AppTheme.textSub,
+          ),
+        ),
+      ],
       body: Column(
         children: [
           _buildHeader(following),
@@ -382,6 +403,13 @@ class _UpHomePageState extends State<UpHomePage> {
                                   style: TextStyle(
                                       fontSize: 11,
                                       color: AppTheme.textSub)),
+                            if (b.pubdate > 0) ...[
+                              const SizedBox(width: 8),
+                              Text(Fmt.date(b.pubdate),
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppTheme.textHint)),
+                            ],
                             if (b.play > 0) ...[
                               const SizedBox(width: 8),
                               Text('${Fmt.count(b.play)} 播放',

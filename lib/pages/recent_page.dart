@@ -6,6 +6,7 @@ import '../core/theme/app_theme.dart';
 import '../player/book_player.dart';
 import '../widgets/book_cover.dart';
 import '../widgets/shelf_common.dart';
+import '../widgets/tv_page_scaffold.dart';
 import 'book_detail_page.dart';
 import 'player_page.dart';
 
@@ -18,8 +19,8 @@ class RecentPage extends StatelessWidget {
     final shelf = context.watch<ShelfStore>();
     final items = shelf.books.where((b) => b.positionMs > 0).toList();
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('最近收听')),
+    return TvPageScaffold(
+      title: const Text('最近收听'),
       body: items.isEmpty
           ? const EmptyShelfView(
               icon: Icons.headphones_outlined,

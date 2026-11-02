@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/network/api_config.dart';
+import '../core/storage/bookmark_store.dart';
 import '../core/storage/cache_store.dart';
 import '../core/storage/shelf_store.dart';
 import '../models/audio_stream.dart';
@@ -172,6 +173,65 @@ class BookPlayer extends ChangeNotifier {
     await setRate(next);
   }
 
+  // ---------- 音量（0~200%，超过 100% 走 mpv 增益） ----------
+  /// 音量上限倍数：2.0 表示可放大到原始音量的 200%
+  static const double maxVolumePct = 2.0;
+  static const _prefVolume = 'abts_volume';
+  double _volumePct = 1.0;
+  bool _volumeMaxRaised = false;
+
+  double get volumePct => _volumePct;
+
+  /// 载入持久化的音量（启动时调用）
+  Future<void> loadVolume() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getDouble(_prefVolume);
+      if (v != null && v >= 0 && v <= maxVolumePct) _volumePct = v;
+    } catch (e) {
+      debugPrint('[BookPlayer] load volume failed: $e');
+    }
+    await _applyVolume();
+  }
+
+  /// 设置音量并持久化（0.0~2.0，1.0 为原始音量）
+  Future<void> setVolumePct(double v) async {
+    _volumePct = v.clamp(0.0, maxVolumePct);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_prefVolume, _volumePct);
+    } catch (_) {}
+    await _applyVolume();
+    notifyListeners();
+  }
+
+  /// 应用当前音量：>100% 前先放开 mpv 的 volume-max 上限，
+  /// 否则 setVolume 会被媒体引擎悄悄钳回 100%。
+  Future<void> _applyVolume() async {
+    try {
+      if (_volumePct > 1.0) await _ensureVolumeMax();
+      // 闪避（降低音量播提示音）期间不动实际音量，恢复时按 _volumeBeforeDuck 还原
+      if (_ducking) return;
+      await _player.setVolume(_volumePct * 100);
+    } catch (e) {
+      debugPrint('[BookPlayer] apply volume failed: $e');
+    }
+  }
+
+  /// 放开 mpv 音量上限（只做一次）
+  Future<void> _ensureVolumeMax() async {
+    if (_volumeMaxRaised) return;
+    try {
+      final p = _player.platform;
+      if (p is NativePlayer) {
+        await p.setProperty('volume-max', '${(maxVolumePct * 100).round()}');
+        _volumeMaxRaised = true;
+      }
+    } catch (e) {
+      debugPrint('[BookPlayer] set volume-max failed: $e');
+    }
+  }
+
   /// 播完本集自动暂停开关
   void setStopAtChapterEnd(bool v) {
     _stopAtChapterEnd = v;
@@ -196,6 +256,7 @@ class BookPlayer extends ChangeNotifier {
     if (_ready) return;
     _ready = true;
     unawaited(loadRate());
+    unawaited(loadVolume());
     _player.stream.completed.listen((_) async {
       // media_kit 在 open() 换源时可能抛出一次伪 completed，
       // 用「加载中」与「位置未到结尾」两道判断过滤，避免乱跳章节
@@ -950,6 +1011,54 @@ class BookPlayer extends ChangeNotifier {
   Future<void> seekRelative(int seconds) async {
     final target = currentPosition + Duration(seconds: seconds);
     await seek(target < Duration.zero ? Duration.zero : target);
+  }
+
+  /// 跳到某条书签：同一集直接定位，别的集先切章再定位
+  Future<void> jumpToBookmark(Bookmark bm) async {
+    final idx = _chapters.indexWhere((c) => c.cid == bm.cid);
+    if (idx < 0) return;
+    if (idx == _index && _loaded && !_loading) {
+      await seek(Duration(milliseconds: bm.positionMs));
+      if (!_player.state.playing) await resume();
+      return;
+    }
+    await playChapterIndex(idx, offsetMs: bm.positionMs);
+  }
+
+  /// 从书签开播：同一本书且目录已就绪时直接定位，
+  /// 否则先拉取书籍详情再切到对应章节与时间点。
+  /// 失败时保持当前播放状态不变，返回 false 交给页面提示。
+  Future<bool> playBookmark(Bookmark bm) async {
+    _ensureNotificationPermission();
+    if (_book?.bvid == bm.bvid && _chapters.isNotEmpty) {
+      final idx = _chapters.indexWhere((c) => c.cid == bm.cid);
+      if (idx >= 0) {
+        return await _loadTarget(idx, resumeMs: bm.positionMs);
+      }
+      // 目录完整但不含这条书签：章节确实已不存在
+      if (_chaptersComplete) return false;
+    }
+    try {
+      final book = await _api.detail(bm.bvid);
+      var chapters = book.chapters ?? const <Chapter>[];
+      if (chapters.isEmpty) chapters = await _api.pageList(bm.bvid);
+      final idx = chapters.indexWhere((c) => c.cid == bm.cid);
+      if (idx < 0) return false;
+      if (_playTallyBook?.bvid != book.bvid) {
+        _playTally = Duration.zero;
+        _playTallyBook = book;
+        _autoShelved = false;
+      }
+      return await _loadTarget(
+        idx,
+        resumeMs: bm.positionMs,
+        newBook: book,
+        newChapters: chapters,
+      );
+    } catch (e) {
+      debugPrint('[BookPlayer] play bookmark failed: $e');
+      return false;
+    }
   }
 
   Future<void> stop() async {

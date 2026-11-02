@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../core/theme/app_theme.dart';
 import '../player/book_player.dart';
+import '../widgets/tv_page_scaffold.dart';
 
 /// 睡眠定时（独立页面）：到点自动暂停，支持自定义时长
 class SleepTimerPage extends StatelessWidget {
@@ -22,8 +23,8 @@ class SleepTimerPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = context.watch<BookPlayer>();
-    return Scaffold(
-      appBar: AppBar(title: const Text('睡眠定时')),
+    return TvPageScaffold(
+      title: const Text('睡眠定时'),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 32),
         children: [

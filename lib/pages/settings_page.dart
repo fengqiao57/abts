@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/storage/cache_store.dart';
 import '../core/theme/app_theme.dart';
 import '../services/auth_store.dart';
 import '../services/device_service.dart';
+import '../widgets/tv_page_scaffold.dart';
 import 'login_page.dart';
 
 /// 设置（独立页面）：账号信息 + 播放与后台。未登录也可进入
@@ -18,10 +20,16 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _loading = true;
   bool _ignoring = false;
 
+  /// 缓存位置展示信息
+  bool _cacheExternal = false;
+  String _cachePath = '';
+  String _cacheFree = '';
+
   @override
   void initState() {
     super.initState();
     _refresh();
+    _refreshCacheInfo();
   }
 
   Future<void> _refresh() async {
@@ -31,6 +39,134 @@ class _SettingsPageState extends State<SettingsPage> {
       _ignoring = v;
       _loading = false;
     });
+  }
+
+  Future<void> _refreshCacheInfo() async {
+    final cache = CacheStore.instance;
+    String path = '';
+    String free = '';
+    try {
+      path = await cache.dirPath();
+    } catch (_) {}
+    try {
+      final bytes = await cache.freeSpace();
+      if (bytes > 0) free = '可用 ${_fmtBytes(bytes)}';
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _cacheExternal = cache.location == 'external';
+      _cachePath = path;
+      _cacheFree = free;
+    });
+  }
+
+  static String _fmtBytes(int bytes) {
+    final gb = bytes / 1024 / 1024 / 1024;
+    if (gb >= 1) return '${gb.toStringAsFixed(1)} GB';
+    return '${(bytes / 1024 / 1024).toStringAsFixed(0)} MB';
+  }
+
+  /// 选择缓存位置（内部存储 / 外部存储·SD 卡）
+  Future<void> _pickCacheLocation() async {
+    final cache = CacheStore.instance;
+    final choose = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+              child: Row(
+                children: [
+                  Text(
+                    '缓存位置',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textMain,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            RadioGroup<String>(
+              groupValue: cache.location,
+              onChanged: (v) => Navigator.of(ctx).pop(v),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<String>(
+                    value: 'internal',
+                    activeColor: AppTheme.accent,
+                    title: const Text('内部存储',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: Text(
+                      '应用私有目录，最稳定，卸载应用时一并删除',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+                    ),
+                  ),
+                  RadioListTile<String>(
+                    value: 'external',
+                    activeColor: AppTheme.accent,
+                    title: const Text('外部存储 / SD 卡',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: Text(
+                      '省内部空间；拔卡或未挂载时离线缓存暂时听不了',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (choose == null || choose == cache.location) return;
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text('切换缓存位置',
+            style: TextStyle(color: AppTheme.textMain, fontSize: 17)),
+        content: Text(
+          '已缓存的音频会迁移到${choose == 'external' ? '外部存储' : '内部存储'}，'
+          '迁移期间请不要退出应用。',
+          style: TextStyle(color: AppTheme.textSub, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('取消', style: TextStyle(color: AppTheme.textSub)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('开始迁移', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('正在迁移缓存，请稍候…'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    final err = await cache.setLocation(choose);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(err ?? '已切换缓存位置'),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    _refreshCacheInfo();
   }
 
   Future<void> _toggle(bool value) async {
@@ -87,8 +223,8 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<LoginStore>();
-    return Scaffold(
-      appBar: AppBar(title: const Text('系统设置')),
+    return TvPageScaffold(
+      title: const Text('系统设置'),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 32),
         children: [
@@ -132,6 +268,28 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _sectionTitle('存储与缓存'),
+          ListTile(
+            leading:
+                Icon(Icons.sd_storage_outlined, color: AppTheme.accent),
+            title: Text(
+              '缓存位置',
+              style: TextStyle(fontSize: 14, color: AppTheme.textMain),
+            ),
+            subtitle: Text(
+              _cachePath.isEmpty
+                  ? '检测中…'
+                  : '${_cacheExternal ? '外部存储 / SD 卡' : '内部存储'}'
+                      '${_cacheFree.isEmpty ? '' : ' · $_cacheFree'}\n$_cachePath',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: AppTheme.textHint),
+            onTap: _pickCacheLocation,
+          ),
         ],
       ),
     );
@@ -156,13 +314,17 @@ class _SettingsPageState extends State<SettingsPage> {
     final logged = auth.isLogin;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppTheme.divider),
-        ),
+      // 用 Material 承载卡片底色：卡内按钮的聚焦高亮/水波才能画在
+      // 卡片之上（普通 Container 白底会盖住 ink 层）
+      child: Material(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.divider),
+          ),
         child: Row(
           children: [
             Container(
@@ -235,6 +397,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: const Text('登录', style: TextStyle(fontSize: 13)),
               ),
           ],
+          ),
         ),
       ),
     );

@@ -7,12 +7,14 @@ import 'package:media_kit/media_kit.dart';
 import 'package:provider/provider.dart';
 
 import 'core/network/bili_client.dart';
+import 'core/storage/bookmark_store.dart';
 import 'core/storage/cache_store.dart';
 import 'core/storage/follow_store.dart';
 import 'core/storage/search_history_store.dart';
 import 'core/storage/shelf_store.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/theme/tv_mode.dart';
 import 'pages/home_shell.dart';
 import 'pages/splash_screen.dart';
 import 'player/bili_audio_handler.dart';
@@ -23,6 +25,11 @@ import 'services/umeng_analytics.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 电视端优先：强制「传统」焦点高亮模式。
+  // 默认自动模式依赖设备上报输入类型，部分安卓 TV/盒子不触发切换，
+  // 会导致遥控器聚焦时按钮自带高亮不显示；聚焦态才绘制，手机端无副作用。
+  FocusManager.instance.highlightStrategy =
+      FocusHighlightStrategy.alwaysTraditional;
   MediaKit.ensureInitialized();
   await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
 
@@ -43,7 +50,9 @@ Future<void> _bootstrap() async {
       SearchHistoryStore.instance.load(),
       LoginStore.instance.load(),
       FollowStore.instance.load(),
+      BookmarkStore.instance.load(),
       CacheStore.instance.load(),
+      TvMode.detect(),
     ]).timeout(const Duration(seconds: 6));
   } catch (e) {
     debugPrint('[main] local init failed: $e');
@@ -142,6 +151,7 @@ class _AbTingShuAppState extends State<AbTingShuApp>
         ChangeNotifierProvider.value(value: LoginStore.instance),
         ChangeNotifierProvider.value(value: SearchHistoryStore.instance),
         ChangeNotifierProvider.value(value: FollowStore.instance),
+        ChangeNotifierProvider.value(value: BookmarkStore.instance),
         ChangeNotifierProvider.value(value: CacheStore.instance),
       ],
       child: AnimatedBuilder(
@@ -154,6 +164,33 @@ class _AbTingShuAppState extends State<AbTingShuApp>
             theme: AppTheme.light(),
             darkTheme: AppTheme.dark(),
             themeMode: tc.mode,
+            // 电视端字号偏小：整体放大一档（手机/平板返回 null 不干预）；
+            // 宽屏形态（电视/平板/手机横屏）同时启用「方向键导航」模式：
+            // 进度条聚焦时上下键不再被吞掉（可移出进度条到其它控件），
+            // 左右键仍调节进度。
+            builder: (context, child) {
+              if (child == null) return const SizedBox.shrink();
+              final mq = MediaQuery.of(context);
+              final scaler = TvMode.textScalerFor(context);
+              final wide = TvMode.useWideLayout(context);
+              // 没有 AppBar 的宽屏页面也要保证状态栏图标与主题明暗一致
+              final overlay = Theme.of(context).brightness == Brightness.dark
+                  ? SystemUiOverlayStyle.light
+                      .copyWith(statusBarColor: Colors.transparent)
+                  : SystemUiOverlayStyle.dark
+                      .copyWith(statusBarColor: Colors.transparent);
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: overlay,
+                child: MediaQuery(
+                  data: mq.copyWith(
+                    textScaler: scaler ?? mq.textScaler,
+                    navigationMode:
+                        wide ? NavigationMode.directional : mq.navigationMode,
+                  ),
+                  child: child,
+                ),
+              );
+            },
             home: _ready
                 ? KeyedSubtree(
                     key: ValueKey('theme-${tc.mode.name}'),
