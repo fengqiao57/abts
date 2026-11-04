@@ -8,6 +8,18 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// A native Gradle build can otherwise succeed without registering Flutter plugins.
+// media_kit then waits indefinitely for its Java helper during Dart startup.
+val pluginRegistrant = file("src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java")
+if (!pluginRegistrant.isFile ||
+    !pluginRegistrant.readText().contains("MediaKitLibsAndroidAudioPlugin")) {
+    throw GradleException(
+        "Flutter Android plugin registration is missing. Run flutter pub get successfully " +
+            "before building the APK. On Windows without symlink privileges, set " +
+            "FLUTTER_WINDOWS=false for the Android-only build process."
+    )
+}
+
 // 发布签名：android/key.properties（已加入 .gitignore，不会随仓库公开）
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
