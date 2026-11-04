@@ -6,10 +6,12 @@ import '../core/app_meta.dart';
 import '../core/storage/bookmark_store.dart';
 import '../core/storage/cache_store.dart';
 import '../core/storage/follow_store.dart';
+import '../core/storage/listening_store.dart';
 import '../core/storage/shelf_store.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/theme_controller.dart';
 import '../core/theme/tv_mode.dart';
+import '../models/listening_history.dart';
 import '../player/book_player.dart';
 import '../services/app_update.dart';
 import '../services/auth_store.dart';
@@ -22,6 +24,7 @@ import 'bookmarks_page.dart';
 import 'cache_page.dart';
 import 'favorites_page.dart';
 import 'follow_page.dart';
+import 'listening_stats_page.dart';
 import 'player_page.dart';
 import 'recent_page.dart';
 import 'settings_page.dart';
@@ -70,6 +73,7 @@ class MyPage extends StatelessWidget {
           _buildHeader(context, shelf, auth),
           const SizedBox(height: 4),
           _statRow(books, reading, cacheCount, follows, context),
+          _listeningCard(context),
           if (reading.isNotEmpty) _buildContinueReading(context, reading),
           _groupLabel('听书'),
           _menuTile(
@@ -163,6 +167,30 @@ class MyPage extends StatelessWidget {
             onTap: () => _push(context, const AboutPage()),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 本机今日与累计收听时长，点击查看日、周、月记录。
+  Widget _listeningCard(BuildContext context) {
+    final history = context.watch<ListeningStore>().history;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        leading: Icon(Icons.bar_chart_rounded, color: AppTheme.accent, size: 30),
+        title: const Text('听书时长'),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            '今日 ${listeningTimeText(history.total(today, DateTime(now.year, now.month, now.day + 1)))}\n'
+            '累计 ${listeningTimeText(history.total())}',
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _push(context, const ListeningStatsPage()),
       ),
     );
   }

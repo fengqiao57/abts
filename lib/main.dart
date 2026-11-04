@@ -12,6 +12,7 @@ import 'core/storage/cache_store.dart';
 import 'core/storage/follow_store.dart';
 import 'core/storage/search_history_store.dart';
 import 'core/storage/shelf_store.dart';
+import 'core/storage/listening_store.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/theme/tv_mode.dart';
@@ -46,6 +47,7 @@ Future<void> _bootstrap() async {
     await Future.wait([
       BiliClient.instance.initLocal(),
       ShelfStore.instance.load(),
+      ListeningStore.instance.load(),
       ThemeController.instance.load(),
       SearchHistoryStore.instance.load(),
       LoginStore.instance.load(),
@@ -138,6 +140,7 @@ class _AbTingShuAppState extends State<AbTingShuApp>
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
       BookPlayer.instance.flushProgress();
+      BookPlayer.instance.flushListening();
     }
   }
 
@@ -147,6 +150,7 @@ class _AbTingShuAppState extends State<AbTingShuApp>
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: ShelfStore.instance),
+        ChangeNotifierProvider.value(value: ListeningStore.instance),
         ChangeNotifierProvider.value(value: BookPlayer.instance),
         ChangeNotifierProvider.value(value: LoginStore.instance),
         ChangeNotifierProvider.value(value: SearchHistoryStore.instance),

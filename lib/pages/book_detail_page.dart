@@ -12,6 +12,7 @@ import '../player/book_player.dart';
 import '../services/bili_api.dart';
 import '../services/umeng_analytics.dart';
 import '../utils/format.dart';
+import '../widgets/book_introduction.dart';
 import '../widgets/book_cover.dart';
 import '../widgets/tv_page_scaffold.dart';
 import 'cache_sheet.dart';
@@ -131,6 +132,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildHeader(book),
+        BookIntroduction(key: ValueKey(book.bvid), description: book.desc),
         const Divider(),
       ],
     );

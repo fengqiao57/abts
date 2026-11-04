@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/network/api_config.dart';
 import '../core/storage/bookmark_store.dart';
 import '../core/storage/cache_store.dart';
+import '../core/storage/listening_store.dart';
 import '../core/storage/shelf_store.dart';
 import '../models/audio_stream.dart';
 import '../models/book.dart';
@@ -17,6 +18,7 @@ import '../models/chapter.dart';
 import '../services/audio_focus.dart';
 import '../services/bili_api.dart';
 import '../services/umeng_analytics.dart';
+import 'listening_tracker.dart';
 
 /// 从缓存页播放一集的结果
 ///
@@ -39,6 +41,33 @@ class BookPlayer extends ChangeNotifier {
   final BiliApi _api = BiliApi.instance;
   final ShelfStore _shelf = ShelfStore.instance;
   final CacheStore _cache = CacheStore.instance;
+  final Stopwatch _listeningClock = Stopwatch()..start();
+  late final ListeningTracker _listeningTracker =
+      ListeningTracker(ListeningStore.instance.record);
+
+  void _sampleListening({bool boundary = false, bool suspend = false}) {
+    _listeningTracker.sample(
+      book: _book,
+      chapter: currentChapter?.cid,
+      position: currentPosition,
+      rate: _rate,
+      active: !suspend &&
+          _loaded &&
+          !_loading &&
+          !_reconnecting &&
+          _error == null &&
+          _player.state.playing &&
+          !_player.state.buffering,
+      elapsed: _listeningClock.elapsed,
+      now: DateTime.now(),
+      boundary: boundary,
+    );
+  }
+
+  void flushListening() {
+    _sampleListening(boundary: true);
+    unawaited(ListeningStore.instance.flush());
+  }
 
   BaseAudioHandler? _audioHandler;
   int _lastStatePush = 0;
@@ -156,12 +185,14 @@ class BookPlayer extends ChangeNotifier {
 
   /// 设置倍速并持久化（听书常用 1.25~1.5）
   Future<void> setRate(double v) async {
+    _sampleListening(boundary: true);
     _rate = v.clamp(0.5, 3.0);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble(_prefRate, _rate);
     } catch (_) {}
     await _player.setRate(_rate);
+    _sampleListening(boundary: true);
     _pushState(force: true);
     notifyListeners();
   }
@@ -255,6 +286,9 @@ class BookPlayer extends ChangeNotifier {
   void setup() {
     if (_ready) return;
     _ready = true;
+    Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(ListeningStore.instance.flush());
+    });
     unawaited(loadRate());
     unawaited(loadVolume());
     _player.stream.completed.listen((_) async {
@@ -290,6 +324,8 @@ class BookPlayer extends ChangeNotifier {
       }
     });
     _player.stream.error.listen((e) async {
+      _sampleListening(boundary: true, suspend: true);
+      unawaited(ListeningStore.instance.flush());
       debugPrint('[BookPlayer] player error: $e');
       // 重连进行中再次报错是重连链路的正常噪声，直接忽略，避免覆盖成功状态
       if (_reconnecting) return;
@@ -303,6 +339,7 @@ class BookPlayer extends ChangeNotifier {
       notifyListeners();
     });
     _player.stream.position.listen((p) {
+      _sampleListening();
       positionTick.value = p;
       _tickSave();
       _pushState();
@@ -310,12 +347,15 @@ class BookPlayer extends ChangeNotifier {
       _markDoneIfReached(p);
     });
     _player.stream.playing.listen((_) {
+      _sampleListening(boundary: true);
+      if (!_player.state.playing) unawaited(ListeningStore.instance.flush());
       _lastPos = currentPosition;
       _lastPosAt = DateTime.now();
       _pushState(force: true);
       notifyListeners();
     });
     _player.stream.buffering.listen((_) {
+      _sampleListening(boundary: true);
       _pushState();
       notifyListeners();
     });
@@ -385,6 +425,7 @@ class BookPlayer extends ChangeNotifier {
   /// 返回是否恢复成功。
   Future<bool> _reconnect({int? keepMs}) async {
     if (_reconnecting) return false;
+    _sampleListening(boundary: true, suspend: true);
     _reconnecting = true;
     // 记录会话代号：期间若用户按了停止，这里要放弃，不能把声音又放出来
     final mySession = _session;
@@ -570,6 +611,7 @@ class BookPlayer extends ChangeNotifier {
     }
 
     if (chapters.isEmpty) {
+      _sampleListening(boundary: true, suspend: true);
       _error = '这本书没有可播放的分P';
       _book = book;
       _loaded = false;
@@ -684,6 +726,8 @@ class BookPlayer extends ChangeNotifier {
     bool chaptersComplete = true,
   }) async {
     final prevBook = _book;
+    _sampleListening(boundary: true, suspend: true);
+    unawaited(ListeningStore.instance.flush());
     final prevChapters = _chapters;
     final prevIndex = _index;
     final prevLoaded = _loaded;
@@ -1004,7 +1048,9 @@ class BookPlayer extends ChangeNotifier {
   }
 
   Future<void> seek(Duration to) async {
+    _sampleListening(boundary: true, suspend: true);
     await _player.seek(to);
+    _sampleListening();
     _pushState(force: true);
   }
 
@@ -1062,6 +1108,8 @@ class BookPlayer extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _sampleListening(boundary: true, suspend: true);
+    unawaited(ListeningStore.instance.flush());
     _pausedByInterruption = false;
     // 会话代号自增：让进行中的重连立即作废，避免「按了停止声音又出来」
     _session++;
